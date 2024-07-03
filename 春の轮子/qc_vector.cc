@@ -2,7 +2,7 @@
  * @file qc_vector.cc
  * @author qc
  * @brief 扩充基本的vector类
- * @details 添加扩容机制
+ * @details 添加扩容机制,缩容机制
  * @version 0.4
  * @date 2024-07-02
  *
@@ -31,7 +31,7 @@ public:
 
     // 拷贝构造函数, 深拷贝
     vector(const vector& v) {
-        m_size = v.m_size;
+        m_capacity = m_size = v.m_size;
         if (m_size) {
             m_data = new T[m_size]{};
             memcpy(m_data, v.m_data, sizeof(T) * m_size);
@@ -52,8 +52,10 @@ public:
     vector(vector&& v) noexcept {
         m_data = v.m_data;
         m_size = v.m_size;
+        m_capacity = v.m_capacity;
         v.m_data = nullptr;
         v.m_size = 0;
+        v.m_capacity = 0;
     }
 
     // 移动拷贝函数
@@ -61,16 +63,18 @@ public:
         clear();
         m_data = v.m_data;
         m_size = v.m_size;
+        m_capacity = v.m_capacity;
         v.m_data = nullptr;
         v.m_size = 0;
+        v.m_capacity = 0;
     }
 
     // 拷贝赋值函数
     vector& operator=(vector const& v) {
         // 判断是否自我赋值
-        if (v == this) return v;
+        if (v == *this) return v;
         clear();
-        m_size = v.m_size;
+        m_capacity = m_size = v.m_size;
         if (m_size) {
             m_data = new T[m_size]{};
             memcpy(m_data, v.m_data, sizeof(T) * m_size);
@@ -128,6 +132,20 @@ public:
         // }
     }
 
+    // 缩小容量(请求,并不一定会执行)
+    // 不想浪费内存,将大内存释放掉,得到小内存
+    void shrink_to_fit() {
+        T *old_data = m_data;
+        m_capacity = m_size;
+        // m_size == 0 不代表没有new过
+        if (m_size == 0) {
+            m_data = nullptr;
+        } else {
+            m_data = new T[m_size];
+            memcpy(m_data, old_data, m_size * sizeof(T));
+        }
+        if (old_data) delete[] old_data;
+    }
     // 扩容从0到1的本质是max(n, m_capacity * 2)
     // 如果一开始size = 0, 那push_back的时候这个函数的n就是1, 之后扩充
     void _grow_capacity_until(size_t n) {
@@ -152,6 +170,16 @@ public:
     void resize(size_t n) {
         _grow_capacity_until(n);
         m_size = n;
+    }
+
+    void reserve(size_t n) {
+        // 不考虑之前有元素
+        // T *old_data = m_data;
+        // m_capacity = n;
+        // m_data = new T[n]{};
+        // m_size = 0;
+        // delete[] old_data;
+        _grow_capacity_until(n);
     }
 
     size_t size() const { return m_size; }
@@ -256,7 +284,13 @@ int main() {
     std::cout << "==================================" << std::endl;
 
     qc::vector<int> a;
+    a.reserve(16);
     for (size_t i = 0; i < 16; ++i) a.push_back(i);
+
+    qc::vector<int> shrink;
+    shrink.reserve(1000);
+    shrink.shrink_to_fit();
+    std::cout << "shrink.size() = " << shrink.size() << " shrink.capacity() = " << shrink.capacity() << std::endl;
 
     return 0;
 }
