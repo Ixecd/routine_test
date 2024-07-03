@@ -67,6 +67,8 @@ public:
 
     // 拷贝赋值函数
     vector& operator=(vector const& v) {
+        // 判断是否自我赋值
+        if (v == this) return v;
         clear();
         m_size = v.m_size;
         if (m_size) {
@@ -189,8 +191,9 @@ public:
 
 public:
     void push_back(T val) {
-        resize(m_size + 1);
+        resize(size() + 1);
         back() = val;
+        // (*this)[size() - 1] = val;
     }
 
     void erase(size_t index) {
@@ -198,11 +201,11 @@ public:
             // 后面那个东西已经不需要移动给当前位置
             m_data[j - 1] = std::move(m_data[j]);
         }
-        resize(m_size - 1);
+        resize(size() - 1);
         // size_t right = m_size - index - 1;
         // memcpy(m_data + index, m_data + index + 1, sizeof(T) * right);
     }
-
+    // 区间删除
     void erase(size_t ibeg, size_t iend) {
         size_t diff = iend - ibeg;
         for (size_t j = iend; j < m_size; ++j) {
