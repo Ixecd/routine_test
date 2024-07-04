@@ -2,19 +2,23 @@
  * @file qc_vector.cc
  * @author qc
  * @brief 扩充基本的vector类
- * @details 添加迭代器
- * @version 0.5
+ * @details 添加initializer_list, random_access_iterator, Vscode中F5走的是task.json 和 c_cpp_pro 两个里面都要设置相应的标准
+ * @version 0.6
  * @date 2024-07-02
  *
  * @copyright Copyright (c) 2024
  *
  */
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <initializer_list>
 #include <iostream>
+#include <iterator>
 #include <stdexcept>
+#include <utility>
 
 namespace qc {
 
@@ -22,6 +26,7 @@ template <class T>
 class vector {
 public:
     typedef T* iterator;
+
 public:
     // 杜绝隐式转换,避免用户手滑写错的情况
     // explicit vector(size_t n) {
@@ -35,8 +40,20 @@ public:
         // m_data = new T[n]{val}; 只会初始化第一个为val
         m_data = new T[n];
         m_size = m_capacity = n;
-        for (size_t i = 0; i < m_size; ++i) 
-            m_data[i] = val;
+        for (size_t i = 0; i < m_size; ++i) m_data[i] = val;
+    }
+
+    vector(std::initializer_list<T> ilist)
+        : vector(ilist.begin(), ilist.end()) {}
+
+    // 这里允许隐式转换,一般类型直接推导即可
+    // c20标准 用来约束模板InputIt必须是 random_access_iterator类型
+    template <std::random_access_iterator InputIt>
+    vector(InputIt first, InputIt last) {
+        size_t n = last - first;
+        m_data = new T[n];
+        for (size_t i = 0; i < n; ++i) m_data[i] = *first++;
+        m_capacity = m_size = n;
     }
 
     // 拷贝构造函数, 深拷贝
@@ -68,8 +85,8 @@ public:
         v.m_capacity = 0;
     }
 
-    // 移动拷贝函数
-    vector& operator=(const vector&& v) noexcept {
+    // 移动赋值函数
+    vector& operator=(vector&& v) noexcept {
         // clear();
         if (m_data) delete[] m_data;
         m_data = v.m_data;
@@ -78,6 +95,7 @@ public:
         v.m_data = nullptr;
         v.m_size = 0;
         v.m_capacity = 0;
+        return *this;
     }
 
     // 拷贝赋值函数
@@ -96,12 +114,24 @@ public:
 
     // operator = 中无法实现多个参数
     // assign相当于祛魅版
-    void assgin(iterator first, iterator last) {
+    template <std::random_access_iterator InputIt>
+    void assgin(InputIt first, InputIt last) {
         size_t diff = last - first;
         for (size_t i = 0; i < diff; ++i) {
-            m_data[i] = *first;
-            ++first;
+            m_data[i] = *first++;
         }
+    }
+
+    void assgin(size_t n, T val) {
+        reserve(n);  // reserve -> 容量扩增并不会改变m_size
+        m_size = n;
+        for (size_t i = 0; i < n; ++i) {
+            m_data[i] = val;
+        }
+    }
+    // initializer_list直接转发给迭代器版本即可
+    void assign(std::initializer_list<T> ilist) {
+        assign(ilist.begin(), ilist.end());
     }
 
     ~vector() noexcept { delete[] m_data; }
@@ -192,8 +222,7 @@ public:
     void resize(size_t n, T val = 0) {
         _grow_capacity_until(n);
         if (n > m_size) {
-            for (size_t i = m_size; i < n; ++i) 
-                m_data[i] = val;
+            for (size_t i = m_size; i < n; ++i) m_data[i] = val;
         }
         m_size = n;
     }
@@ -290,8 +319,52 @@ public:
         resize(size() - diff);
     }
 
-    void insert(iterator const it) {
+    void insert(iterator const it, size_t n, T val = 0) {
+        size_t j = it - m_data;
+        size_t l = end() - it;
+        if (n == 0) [[unlikely]]
+            return;
+        reserve(size() + n);
+        m_size += n;
 
+        // 像这种要将元素往后移动的情况必须倒过来
+        // 如果添加的数量小于头尾之间的数量,就会造成覆盖情况
+        for (int i = j + n - 1; i >= (int)j; --i)
+            m_data[i + n] = std::move(m_data[i]);
+
+        for (size_t i = j; i < j + n; ++i) m_data[i] = val;
+    }
+
+    // C++20
+    template <std::random_access_iterator InputIt>
+    void insert(iterator const it, InputIt first, InputIt last) {
+        size_t n = last - first;
+        size_t j = it - m_data;
+        size_t l = end() - it;
+        if (n == 0) [[unlikely]]
+            return;
+        reserve(size() + n);
+        m_size += n;
+        // j ~ m_size -> j + n ~ m_size + n
+        // 有BUG如果n小于他们之间的间隙就会出现覆盖丢失数据
+        // for (size_t i = j; i < size(); ++i) {
+        //     m_data[i + n] = std::move(m_data[i]);
+        // }
+
+        // 必须倒过来
+        // std::cout << "l = " << l << std::endl;
+        // 注意int 和 size_t类型的比较问题,如果比较时同时出现int 和 size_t
+        // 按照size_t来处理
+        for (int i = j + l - 1; i >= (int)j; --i) {
+            m_data[i + n] = std::move(m_data[i]);
+        }
+        for (size_t i = j; i < j + n; ++i) {
+            m_data[i] = *first++;  // 先解引用再++
+        }
+    }
+
+    void insert(iterator const it, std::initializer_list<T> ilist) {
+        insert(it, ilist.begin(), ilist.end());
     }
 
 private:
@@ -368,6 +441,46 @@ int main() {
     for (qc::vector<int>::iterator it = b.begin(); it != b.end(); ++it) {
         std::cout << *it << std::endl;
     }
+
+    std::cout << "========== test insert ============" << std::endl;
+
+    qc::vector<int> c(5);
+    for (int i = 0; i < c.size(); ++i) {
+        c[i] = i + 1;
+        std::cout << c[i] << "";
+    }
+    std::cout << std::endl;
+
+    int c_1[5]{8, 7, 6, 5, 4};
+    int *f_1 = c_1 + 1, *l_1 = c_1 + 3;
+    c.insert(c.begin(), f_1, l_1);
+    for (int i = 0; i < c.size(); ++i) std::cout << c[i] << " ";
+    std::cout << std::endl;
+    c.erase(c.begin());
+    std::cout << "after erase" << std::endl;
+    for (int i = 0; i < c.size(); ++i) std::cout << c[i] << " ";
+    std::cout << std::endl;
+
+    std::cout << "=========== assign ===========" << std::endl;
+    qc::vector<int> d;
+    d.assgin(5, 100);  // equal to -> d = qc::vector<int>(5, 100);
+    for (auto it = d.begin(); it != d.end(); ++it) std::cout << *it << " ";
+    std::cout << std::endl;
+
+    std::cout << "=========== initializer_list ===========" << std::endl;
+    d = qc::vector<int>({1, 2, 3, 4});
+    for (auto it = d.begin(); it != d.end(); ++it) std::cout << *it << " ";
+    std::cout << std::endl;
+
+    qc::vector<int> e{1, 3, 4, 5};
+    for (auto it = e.begin(); it != e.end(); ++it) std::cout << *it << " ";
+    std::cout << std::endl;
+
+    std::cout << "insert an initializer_list" << std::endl;
+    e.insert(e.begin(), {1, 2, 3});
+    std::cout << "after insert an initializer_list" << std::endl;
+    for (auto it = e.begin(); it != e.end(); ++it) std::cout << *it << " ";
+    std::cout << std::endl;
 
     return 0;
 }
