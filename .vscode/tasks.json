@@ -6,10 +6,11 @@
             "label": "C/C++: g++ 生成活动文件",
             "command": "/usr/bin/g++",
             "args": [
+                "-std=c++23",
                 "-g",
-                "${file}",
+                "${fileDirname}/${fileBasenameNoExtension}.cc",
                 "-o",
-                "${fileDirname}/${fileBasenameNoExtension}"
+                "${fileDirname}/bin/${fileBasenameNoExtension}"
             ],
             "options": {
                 "cwd": "${fileDirname}"
