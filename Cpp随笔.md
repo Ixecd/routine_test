@@ -5,7 +5,7 @@
     在比较中如果同时出现这两个,编译器默认会将int转换为size_t,这在判断 >=0 ? --i 非常危险!
 
 3. 关于VsCode中 F5
-    F5 对应 tasks.json 和 c_cpp_properties.json, 两个文件里编译器的版本都要正确F5才能正确RUN
+    F5 对应 tasks.json 和 c_cpp_properties.json 和 launch.json, 三个文件里编译器的版本都要正确F5才能正确RUN, 前两个负责编译,最后一个负责运行
 
 4. 关于模板
     除了一般常见的模板C++20提供了#include<iterator>, template <std::random_access_iterator InputIt> -> 约束类型为随机访问迭代器(约束机制) -> 使用概念(concepts)约束类型参数
