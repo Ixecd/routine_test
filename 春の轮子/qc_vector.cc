@@ -2,7 +2,8 @@
  * @file qc_vector.cc
  * @author qc
  * @brief 扩充基本的vector类
- * @details 添加initializer_list, random_access_iterator, Vscode中F5走的是task.json 和 c_cpp_pro 两个里面都要设置相应的标准
+ * @details 添加initializer_list, random_access_iterator,
+ * Vscode中F5走的是task.json 和 c_cpp_pro 两个里面都要设置相应的标准
  * @version 0.6
  * @date 2024-07-02
  *
@@ -20,12 +21,28 @@
 #include <stdexcept>
 #include <utility>
 
+/**
+ * @brief int是一个POD类型,可以平凡拷贝,所以才可以memcpy,
+ * 如果是string类型,里面有自定义的拷贝构造函数,就不能使用memcpy
+ *
+ */
+
 namespace qc {
 
-template <class T>
+template <class T, class Alloc = std::allocator<T>>
 class vector {
 public:
-    typedef T* iterator;
+    // 分配器
+    using allocator = std::allocator<T>;  // 分配得到的内存一定是对其的,裸malloc可能得到的内存不对其
+    using value_type = Alloc;
+    using pointer = T *;
+    using const_pointer = T const *;
+    using reference = T &;
+    using const_reference = T const &;
+    using iterator = T *;
+    using const_iterator = T const *;
+    using reverse_iterator = std::reverse_iterator<T *>;
+    using const_reverse_iterator = std::reverse_iterator<T const *>;
 
 public:
     // 杜绝隐式转换,避免用户手滑写错的情况
@@ -38,7 +55,8 @@ public:
 
     explicit vector(size_t n, T val = 0) {
         // m_data = new T[n]{val}; 只会初始化第一个为val
-        m_data = new T[n];
+        // m_data = new T[n];
+        m_data = allocator{}.allocate(n);
         m_size = m_capacity = n;
         for (size_t i = 0; i < m_size; ++i) m_data[i] = val;
     }
@@ -51,7 +69,8 @@ public:
     template <std::random_access_iterator InputIt>
     vector(InputIt first, InputIt last) {
         size_t n = last - first;
-        m_data = new T[n];
+        // m_data = new T[n];
+        m_data = allocator{}.allocate(n);
         for (size_t i = 0; i < n; ++i) m_data[i] = *first++;
         m_capacity = m_size = n;
     }
@@ -60,8 +79,19 @@ public:
     vector(const vector& v) {
         m_capacity = m_size = v.m_size;
         if (m_size) {
-            m_data = new T[m_size]{};
-            memcpy(m_data, v.m_data, sizeof(T) * m_size);
+            // 不用new了,避免一轮赋值, malloc出来的不一定是对其的
+            // m_data = malloc(m_size * sizeof(T));
+            m_data = allocator{}.allocate(m_capacity);
+            // m_data = new T[m_size]; //
+            // 如果是string类型即使不加{}也会初始化的时候进行一轮赋值,下面还会进行一轮赋值
+            for (size_t i = 0; i < m_size; ++i) {
+                // m_data[i] = std::as_const(v.m_data[i]);  // ->
+                // T类型的拷贝赋值函数,推荐走const 版本
+                std::construct_at(&m_data[i], std::as_const(v.m_data[i]));
+                // or
+                // new (&m_data[i]) T (std::as_const(that.m_data[i]));
+            }
+            // memcpy(m_data, v.m_data, sizeof(T) * m_size);
         } else {
             m_data = nullptr;
         }
@@ -77,6 +107,7 @@ public:
     // 不需要深拷贝
     // 移动构造一般都用noexcept修饰,不会申请新的内存
     vector(vector&& v) noexcept {
+        // std::cout << "in vector(vector&& v) " << std::endl;
         m_data = v.m_data;
         m_size = v.m_size;
         m_capacity = v.m_capacity;
@@ -87,8 +118,11 @@ public:
 
     // 移动赋值函数
     vector& operator=(vector&& v) noexcept {
+        // std::cout << "in operator=(vector&& v) " << std::endl;
         // clear();
-        if (m_data) delete[] m_data;
+        if (m_capacity) [[likely]]
+            allocator{}.deallocate(m_data, m_capacity);
+        // delete[] m_data;
         m_data = v.m_data;
         m_size = v.m_size;
         m_capacity = v.m_capacity;
@@ -100,14 +134,17 @@ public:
 
     // 拷贝赋值函数
     vector& operator=(vector const& v) {
-        // 判断是否自我赋值
-        if (v == *this) return v;
+        // 判断是否自我赋值,判断的是地址
+        if (&v == this) return *this;
         // clear();
         reserve(v.m_size);
         m_capacity = m_size = v.m_size;
         if (m_size) {
             // m_data = new T[m_size]{};
-            memcpy(m_data, v.m_data, sizeof(T) * m_size);
+            for (size_t i = 0; i < m_size; ++i)
+                // m_data[i] = std::as_const(v.m_data[i]);
+                std::construct_at(&m_data[i], std::as_const(v.m_data[i]));
+            // memcpy(m_data, v.m_data, sizeof(T) * m_size);
         }
         return *this;
     }
@@ -134,7 +171,10 @@ public:
         assign(ilist.begin(), ilist.end());
     }
 
-    ~vector() noexcept { delete[] m_data; }
+    ~vector() noexcept {
+        if (m_capacity) [[likely]]
+            allocator{}.deallocate(m_data, m_capacity);
+    }
 
 public:
     void clear() noexcept { resize(0); }
@@ -144,23 +184,29 @@ public:
     // _name 内部api
     void _recapacity(size_t n) {
         {
-            if (m_data) {
+            if (m_capacity) {
                 if (0 == n) {
-                    delete[] m_data;
+                    // delete[] m_data;
+                    allocator{}.deallocate(m_data, m_capacity);
                     m_data = nullptr;
                     m_capacity = 0;
                     return;
                 }
                 // new出来之后使用{}初始化为0
-                T* tmp = new T[n]{};
+                // T* tmp = new T[n]{};
+                T* tmp = allocator{}.allocate(n);
                 // 如果size变小就要把多余的砍掉
-                memcpy(tmp, m_data, std::min(m_capacity, n) * sizeof(T));
-                delete[] m_data;
+                for (size_t i = 0; i < std::min(m_capacity, n); ++i)
+                    std::construct_at(&tmp[i], std::as_const(m_data[i]));
+                // memcpy(tmp, m_data, std::min(m_capacity, n) * sizeof(T));
+                // delete[] m_data;
+                allocator{}.deallocate(m_data, m_capacity);
                 m_data = tmp;
                 m_capacity = n;
             } else {
                 if (0 == n) return;
-                m_data = new T[n]{};
+                // m_data = new T[n]{};
+                m_data = allocator{}.allocate(n);
                 m_capacity = n;
             }
         }
@@ -188,41 +234,54 @@ public:
     // 不想浪费内存,将大内存释放掉,得到小内存
     void shrink_to_fit() {
         T* old_data = m_data;
+        size_t old_capacity = m_capacity;
         m_capacity = m_size;
         // m_size == 0 不代表没有new过
         if (m_size == 0) {
             m_data = nullptr;
         } else {
-            m_data = new T[m_size];
-            memcpy(m_data, old_data, m_size * sizeof(T));
+            m_data = allocator{}.allocate(m_size);
+            // m_data = new T[m_size];
+            for (size_t i = 0; i < m_size; ++i)
+                std::construct_at(&m_data[i], std::as_const(old_data[i]));
+            // memcpy(m_data, old_data, m_size * sizeof(T));
         }
-        if (old_data) delete[] old_data;
+        if (old_capacity) allocator{}.deallocate(old_data, old_capacity);
+        // delete[] old_data;
     }
     // 扩容从0到1的本质是max(n, m_capacity * 2)
     // 如果一开始size = 0, 那push_back的时候这个函数的n就是1, 之后扩充
     void _grow_capacity_until(size_t n) {
         if (n <= m_capacity) return;
         // 两倍增长
+        T* old_data = m_data;
+        size_t old_capacity = m_capacity;
         n = std::max(n, m_capacity * 2);
         printf("vector capacity from %zd to %zd\n", m_capacity, n);
-        T* old_data = m_data;
         if (n == 0) {
             m_data = nullptr;
             m_capacity = 0;
         } else {
-            m_data = new T[n]{};
+            // m_data = new T[n]{};
+            m_data = allocator{}.allocate(n);
             m_capacity = n;
         }
-        if (old_data) {
-            if (m_size) memcpy(m_data, old_data, sizeof(T) * m_size);
-            delete[] old_data;
+        if (old_capacity) {
+            if (m_size)
+                for (size_t i = 0; i < m_size; ++i)
+                    std::construct_at(&m_data[i], std::as_const(old_data[i]));
+            // memcpy(m_data, old_data, sizeof(T) * m_size);
+            // delete[] old_data;
+            allocator{}.deallocate(old_data, old_capacity);
         }
     }
 
     void resize(size_t n, T val = 0) {
         _grow_capacity_until(n);
         if (n > m_size) {
-            for (size_t i = m_size; i < n; ++i) m_data[i] = val;
+            for (size_t i = m_size; i < n; ++i)
+                std::construct_at(&m_data[i], val);
+            // m_data[i] = val;
         }
         m_size = n;
     }
@@ -276,14 +335,43 @@ public:
     // 迭代器, 注意在Class中 typedef也受访问控制
     // typedef T* iterator;
 
+
     const iterator begin() const { return m_data; }
 
     const iterator end() const { return m_data + m_size; }
 
+    const iterator cbegin() const { return m_data; }
+
+    const iterator cend() const { return m_data + m_size; }
+
+    std::reverse_iterator<iterator> rbegin() { return std::make_reverse_iterator(m_data); }
+
+    std::reverse_iterator<iterator> rend() { return std::make_reverse_iterator(m_data + m_size); }
+
+    std::reverse_iterator<const iterator> rcbegin() const { return std::make_reverse_iterator(m_data); }
+
+    std::reverse_iterator<const iterator> rcend() const { return std::make_reverse_iterator(m_data + m_size); }
+
+    iterator begin() { return m_data; }
+
+    iterator end() { return m_data + m_size; }
+
+    iterator data() { return m_data; }
+
+    const iterator data() const { return m_data; }
+
+    const iterator cdata() const { return m_data; }
+
 public:
-    void push_back(T val) {
+    void push_back(T const &val) {
         resize(size() + 1);
         back() = val;
+        // (*this)[size() - 1] = val;
+    }
+
+    void push_back(T &&val) {
+        resize(size() + 1);
+        back() = std::move(val);
         // (*this)[size() - 1] = val;
     }
     // 区间删除(下标版本)
@@ -355,6 +443,9 @@ public:
         // std::cout << "l = " << l << std::endl;
         // 注意int 和 size_t类型的比较问题,如果比较时同时出现int 和 size_t
         // 按照size_t来处理
+
+        // 数据从前往后搬必须从前面的尾开始
+        // 数据从后往前搬必须从后面的头开始
         for (int i = j + l - 1; i >= (int)j; --i) {
             m_data[i + n] = std::move(m_data[i]);
         }
@@ -375,7 +466,23 @@ private:
 
 }  // namespace qc
 
-int main() {
+template <class T>
+void print(const std::string name, qc::vector<T>& ary) {
+    std::cout << "print " << name << std::endl;
+    for (auto it = ary.begin(); it != ary.end(); ++it) std::cout << *it << " ";
+    std::cout << std::endl;
+}
+
+template <class T>
+void print_size(const std::string name, qc::vector<T>& ary) {
+    std::cout << name << " size() = " << ary.size() << std::endl;
+}
+
+// m_data = new std::string[m_size] -> 有默认构造函数,会自动初始化,m_size次赋值
+// 之后再赋值一遍->拷贝赋值函数->m_size次赋值
+// 两倍开销
+
+void test_vector() {
     // const qc::vector<int> arr(3);
     // qc::vector<int> arr = 3; -> 隐式构造函数杜绝 -> {0, 0, 0}
     qc::vector<int> arr(4);
@@ -481,6 +588,37 @@ int main() {
     std::cout << "after insert an initializer_list" << std::endl;
     for (auto it = e.begin(); it != e.end(); ++it) std::cout << *it << " ";
     std::cout << std::endl;
+}
+
+void test_move() {
+    qc::vector<int> arr{1, 2, 3, 4};
+    qc::vector<int> bar = std::move(arr);  // 移动构造函数
+    qc::vector<int> ary{3, 2, 1};
+    bar = std::move(ary);
+    print<int>("bar", bar);
+
+    print_size<int>("bar", bar);
+
+    qc::vector<int> q(3);
+    print<int>("q", q);
+}
+
+void test_copy_assign() {
+    qc::vector<int> arr{1, 2, 4, 5, 6};
+    qc::vector<int> brr{2, 3, 4, 6, 7};
+
+    brr = brr;
+
+    print<int>("arr", arr);
+    print<int>("brr", brr);
+}
+
+int main() {
+    // test_vector();
+
+    // test_move();
+
+    test_copy_assign();
 
     return 0;
 }
