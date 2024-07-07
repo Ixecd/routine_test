@@ -2,8 +2,8 @@
  * @file qc_vector.cc
  * @author qc
  * @brief 扩充vector类
- * @details 添加分配器,添加成员函数,提高健壮性,考虑数据类型
- * @version 1.0
+ * @details review
+ * @version 1.1
  * @date 2024-07-07
  *
  * @copyright Copyright (c) 2024
@@ -38,7 +38,8 @@ class vector {
 public:
     // 分配器 allocator 一般作为一个成员,为了支持实现内存池,alloc是有状态的
     // 普通allocator是调用全局的new和delete,无状态 空基类优化peace
-    using allocator = std::allocator<T>;  // 分配得到的内存一定是对其的,裸malloc可能得到的内存不对其
+    using allocator = std::allocator<
+        T>;  // 分配得到的内存一定是对其的,裸malloc可能得到的内存不对其
     using value_type = Alloc;
     using pointer = T*;
     using const_pointer = T const*;
@@ -50,8 +51,8 @@ public:
     using const_reverse_iterator = std::reverse_iterator<T const*>;
 
 public:
-    // 杜绝隐式转换,避免用户手滑写错的情况
-    // explicit vector(size_t n) {
+    // 杜绝隐式转换,避免用户手滑写错的情况 vector arr = 3 ==> want ->arr {3},
+    // don't want -> arr {0, 0, 0} explicit vector(size_t n) {
     //     m_data = new T[n]{};
     //     memset(m_data, 0, n * sizeof(T));
     //     m_size = n;
@@ -63,7 +64,8 @@ public:
         m_capacity = 0;
     }
 
-    explicit vector(size_t n, allocator const& alloc = Alloc()) : m_alloc(alloc) {
+    explicit vector(size_t n, allocator const& alloc = Alloc())
+        : m_alloc(alloc) {
         // m_data = new T[n]{val}; 只会初始化第一个为val
         // m_data = new T[n];
         // m_data = allocator{}.allocate(n);
@@ -71,7 +73,7 @@ public:
         m_size = m_capacity = n;
         for (size_t i = 0; i < m_size; ++i) std::construct_at(&m_data[i]);
     }
-
+    // 常量引用可以绑定右值->编译器临时创建一个对象保存这个右值(通常在栈上)
     vector(size_t n, T const& val, allocator const& alloc = allocator())
         : m_alloc(alloc) {
         // m_data = new T[n]{val}; 只会初始化第一个为val
@@ -79,14 +81,13 @@ public:
         // m_data = allocator{}.allocate(n);
         m_data = m_alloc.allocate(n);
         m_size = m_capacity = n;
-        for (size_t i = 0; i < m_size; ++i) std::construct_at(&m_data[i], val);
+        for (size_t i = 0; i < m_size; ++i)
+            std::construct_at(&m_data[i], std::move(val));
     }
 
-    vector(std::initializer_list<T> ilist, allocator const& alloc = allocator())
-        : vector(ilist.begin(), ilist.end(), alloc) {}
-
     // 这里允许隐式转换,一般类型直接推导即可
-    // c20标准 用来约束模板InputIt必须是 random_access_iterator类型
+    // c20标准 用来约束模板InputIt必须是 random_access_iterator(概念
+    // concept)类型
     template <std::random_access_iterator InputIt>
     vector(InputIt first, InputIt last, allocator const& alloc = allocator())
         : m_alloc(alloc) {
@@ -94,19 +95,23 @@ public:
         // m_data = new T[n];
         // m_data = allocator{}.allocate(n);
         m_data = m_alloc.allocate(n);
-        for (size_t i = 0; i < n; ++i) m_data[i] = *first++;
+        for (size_t i = 0; i < n; ++i) std::construct_at(&m_data[i], *first++);
         m_capacity = m_size = n;
     }
 
+    vector(std::initializer_list<T> ilist, allocator const& alloc = allocator())
+        : vector(ilist.begin(), ilist.end(), alloc) {}
+
     // 拷贝构造函数, 深拷贝
-    vector(const vector& v, allocator const& alloc = allocator()) : m_alloc(alloc) {
+    vector(const vector& v, allocator const& alloc = allocator())
+        : m_alloc(alloc) {
         m_capacity = m_size = v.m_size;
         if (m_size) {
             // 不用new了,避免一轮赋值, malloc出来的不一定是对其的
             // m_data = malloc(m_size * sizeof(T));
             // m_data = allocator{}.allocate(m_capacity);
             // m_data = new T[m_size]; //
-            m_data = m_alloc.allocate(n);
+            m_data = m_alloc.allocate(m_size);
             // 如果是string类型即使不加{}也会初始化的时候进行一轮赋值,下面还会进行一轮赋值
             for (size_t i = 0; i < m_size; ++i) {
                 // m_data[i] = std::as_const(v.m_data[i]);  // ->
@@ -124,7 +129,8 @@ public:
     // 移动构造函数 把v的变成自己的
     // 不需要深拷贝
     // 移动构造一般都用noexcept修饰,不会申请新的内存
-    vector(vector&& v, allocator const& alloc = allocator()) noexcept : m_alloc(alloc) {
+    vector(vector&& v, allocator const& alloc = allocator()) noexcept
+        : m_alloc(alloc) {
         // std::cout << "in vector(vector&& v) " << std::endl;
         m_data = v.m_data;
         m_size = v.m_size;
@@ -176,10 +182,11 @@ public:
     // operator = 中无法实现多个参数
     // assign相当于祛魅版
     template <std::random_access_iterator InputIt>
-    void assgin(InputIt first, InputIt last) noexcept {
+    void assgin(InputIt first, InputIt last) {
         size_t diff = last - first;
+        reserve(diff);
         for (size_t i = 0; i < diff; ++i) {
-            m_data[i] = *first++;
+            std::construct_at(&m_data[i], std::as_const(*first++));
         }
     }
 
@@ -206,7 +213,6 @@ public:
         for (size_t i = 0; i < m_size; ++i) std::destroy_at(&m_data[i]);
         m_size = 0;
     }
-
     // 赋值函数一定要把之前的释放掉
     // 要把原来的东西拷贝过去
     // _name 内部api
@@ -339,12 +345,6 @@ public:
         _grow_capacity_until(n);
     }
 
-    size_t size() const noexcept { return m_size; }
-
-    bool empty() const noexcept { return m_size == 0; }
-
-    size_t capacity() const noexcept { return m_capacity; }
-
 public:
     /// @brief 下标类型一定是size_t类型,如果是int最多表示2亿也就是2^31 - 1,
     /// size_t -> 2 ^ 64 - 1 arr[i] = i -->
@@ -375,6 +375,12 @@ public:
     T& front() noexcept { return m_data[0]; }
 
     T const& front() const noexcept { return m_data[0]; }
+
+    size_t size() const noexcept { return m_size; }
+
+    bool empty() const noexcept { return m_size == 0; }
+
+    size_t capacity() const noexcept { return m_capacity; }
 
 public:
     // 迭代器, 注意在Class中 typedef也受访问控制
@@ -417,7 +423,7 @@ public:
 public:
     void push_back(T const& val) {
         reserve(size() + 1);  // reserve得到的内存是纯的
-        std::construct_at(&m_data[m_size], val);
+        std::construct_at(&m_data[m_size], std::as_const(val));
         m_size += 1;
         // (*this)[size() - 1] = val;
     }
@@ -786,7 +792,7 @@ void test_emplace_back() {
         int y;
     };
     qc::vector<S> bar;
-    // bar.emplace_back() = {1, 2}; // 1, 2
+    bar.emplace_back() = {1, 2}; // 1, 2
     // bar.emplace_back(1).x = 1;
     // bar.emplace_back(1).y = 1; // (1) ->
     // 指向的位置的结构体的第一个值为1,返回的是引用.y->设置y的值
@@ -814,20 +820,20 @@ void test_insert() {
 }
 
 int main() {
-    // test_vector();
+    test_vector();
 
-    // test_move();
+    test_move();
 
-    // test_copy_assign();
+    test_copy_assign();
 
     // test_thread();
 
-    // test_emplace_back();
+    test_emplace_back();
 
     // std::cout << sizeof(qc::vector<int>) << std::endl; //use
     // [[no_unique_address]] -> 24, not use -> 32 (一个指针)
 
-    // test_erase();
+    test_erase();
 
     test_insert();
 
