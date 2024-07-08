@@ -38,13 +38,15 @@ class vector {
 public:
     // 分配器 allocator 一般作为一个成员,为了支持实现内存池,alloc是有状态的
     // 普通allocator是调用全局的new和delete,无状态 空基类优化peace
-    using allocator = std::allocator<
-        T>;  // 分配得到的内存一定是对其的,裸malloc可能得到的内存不对其
+    // 分配得到的内存一定是对其的,裸malloc可能得到的内存不对其
+    using allocator = std::allocator<T>;
     using value_type = Alloc;
     using pointer = T*;
     using const_pointer = T const*;
     using reference = T&;
     using const_reference = T const&;
+    using difference_type = ptrdiff_t;
+    using size_type = size_t;
     using iterator = T*;
     using const_iterator = T const*;
     using reverse_iterator = std::reverse_iterator<T*>;
@@ -792,7 +794,7 @@ void test_emplace_back() {
         int y;
     };
     qc::vector<S> bar;
-    bar.emplace_back() = {1, 2}; // 1, 2
+    bar.emplace_back() = {1, 2};  // 1, 2
     // bar.emplace_back(1).x = 1;
     // bar.emplace_back(1).y = 1; // (1) ->
     // 指向的位置的结构体的第一个值为1,返回的是引用.y->设置y的值
