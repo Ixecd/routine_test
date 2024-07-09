@@ -210,6 +210,8 @@ public:
     }
 
     ~vector() noexcept {
+        for (size_t i = 0; i < m_size; ++i) 
+            std::destroy_at(&m_data[i]);
         if (m_capacity) [[likely]]
             m_alloc.deallocate(m_data, m_capacity);
     }
