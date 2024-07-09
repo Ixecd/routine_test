@@ -23,7 +23,6 @@
 /**
  * @brief int是一个POD类型,可以平凡拷贝,所以才可以memcpy,
  * 如果是string类型,里面有自定义的拷贝构造函数,就不能使用memcpy
- *
  */
 
 namespace qc {
@@ -34,6 +33,11 @@ namespace qc {
 // };
 
 template <class T, class Alloc = std::allocator<T>>
+/**
+ * @brief int是一个POD类型,可以平凡拷贝,所以才可以memcpy,
+ * 如果是string类型,里面有自定义的拷贝构造函数,就不能使用memcpy
+ */
+
 class vector {
 public:
     // 分配器 allocator 一般作为一个成员,为了支持实现内存池,alloc是有状态的
