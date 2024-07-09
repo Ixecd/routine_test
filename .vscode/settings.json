@@ -91,5 +91,12 @@
         "spanstream": "cpp",
         "stacktrace": "cpp",
         "stdfloat": "cpp"
+    },
+    "aide.convertLanguagePairs": {
+        "javascript": "cpp",
+        "json": "yaml",
+        "cpp": "c",
+        "go": "cpp",
+        "jsonc": "cpp"
     }
 }
