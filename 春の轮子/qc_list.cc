@@ -21,12 +21,29 @@
 #include <list>
 #include <memory>
 #include <stdexcept>
+#include <type_traits>
 
 namespace qc {
 
 // list的allocator中的元素类型应该为ListNode而非T,所以要rebind
-template <class T>
+template <class T, class Alloc = std::allocator<T>>
 class list {
+public:
+    // 下面是优化(将val和其他属性分隔开) 将list大小从8 + 8 + sizeof(T) -> 8 + 8
+    struct ListValueNode;
+    struct ListNode {
+        ListNode *m_prev;
+        ListNode *m_next;
+        inline T &value() { return static_cast<ListValueNode &>(*this).m_val; }
+        inline T const &value() const {
+            return static_cast<ListValueNode const &>(*this).m_val;
+        }
+    };
+
+    struct ListValueNode : public ListNode {
+        T m_val;
+    };
+
 public:
     // T() ==> int() = 0, float() = 0.0f, string() = "", pointer() = nullptr;
     using value_type = T;
@@ -35,6 +52,8 @@ public:
     using const_pointer = T const *;
     using reference = T &;
     using const_reference = T const &;
+    using AllocNode = typename std::allocator_traits<
+        Alloc>::template rebind_alloc<ListValueNode>;
 
 private:
     // struct PrivateConstruct {
@@ -44,24 +63,24 @@ private:
     //     nullptr) / list<int>::const_iterator(nullptr)创建迭代器
     // };
 public:
-    struct ListNode {
-        ListNode() {
-            std::construct_at(&m_val);
-            m_prev = this;
-            m_next = this;
-        }
+    // struct ListNode {
+    //     ListNode() {
+    //         std::construct_at(&m_val);
+    //         m_prev = this;
+    //         m_next = this;
+    //     }
 
-        explicit ListNode(T const &val, ListNode *prev = nullptr,
-                          ListNode *next = nullptr) {
-            std::construct_at(&m_val, std::move(val));
-            m_prev = prev;
-            m_next = next;
-        }
+    //     explicit ListNode(T const &val, ListNode *prev = nullptr,
+    //                       ListNode *next = nullptr) {
+    //         std::construct_at(&m_val, std::move(val));
+    //         m_prev = prev;
+    //         m_next = next;
+    //     }
 
-        T m_val;
-        ListNode *m_prev;
-        ListNode *m_next;
-    };
+    //     T m_val;
+    //     ListNode *m_prev;
+    //     ListNode *m_next;
+    // };
 
 public:
     list() noexcept {}
@@ -71,10 +90,10 @@ public:
         //     m_head = &m_dummy;
         //     return;
         // }
-        // ListNode *curr = new ListNode(), *prev = nullptr;
+        // ListNode *curr = new ListValueNode(), *prev = nullptr;
         // m_head = prev = curr;
         // for (size_t i = 1; i < n; ++i) {
-        //     curr = new ListNode();
+        //     curr = new ListValueNode();
         //     curr->m_prev = prev;
         //     prev->m_next = curr;
         //     prev = curr;
@@ -84,9 +103,11 @@ public:
         // m_dummy.m_prev = prev;
         ListNode *prev = &m_dummy;
         for (size_t i = 0; i < n; ++i) {
-            ListNode *node = new ListNode();
+            ListNode *node = newNode();
             prev->m_next = node;
             node->m_prev = prev;
+            // node->value() = T();
+            std::construct_at(&node->value());
             prev = node;
         }
         prev->m_next = &m_dummy;
@@ -96,9 +117,10 @@ public:
     explicit list(size_t n, T const &val) {
         ListNode *prev = &m_dummy;
         for (size_t i = 0; i < n; ++i) {
-            ListNode *node = new ListNode(val);
+            ListNode *node = newNode();
             prev->m_next = node;
             node->m_prev = prev;
+            std::construct_at(&node->value(), val);
             prev = node;
         }
         prev->m_next = &m_dummy;
@@ -132,9 +154,10 @@ public:
         // m_head = prev = curr;
         // std::cout << "m_head->val = " << m_head->m_val << std::endl;
         while (first != last) {
-            ListNode *node = new ListNode(*first++);
+            ListNode *node = newNode();
             node->m_prev = prev;
             prev->m_next = node;
+            std::construct_at(&node->value(), *first++);
             prev = node;
             // ++first;
         }
@@ -144,45 +167,120 @@ public:
     // 初始化列表中的iterator类型为random_access_iterator,其是input_iterator的超集,所以直接转发没有任何问题
     list(std::initializer_list<T> ilist) : list(ilist.begin(), ilist.end()) {}
 
-    // 拷贝构造函数
-    list(list<T> &lst) {
+    template <std::input_iterator InputIt>
+    void assign(InputIt first, InputIt last) {
+        clear();
         ListNode *prev = &m_dummy;
-        for (list<T>::iterator it = lst.begin(); it != lst.end(); ++it) {
-            ListNode *node = new ListNode(*it);
-            prev->m_next = node;
+        // m_head = prev = curr;
+        // std::cout << "m_head->val = " << m_head->m_val << std::endl;
+        while (first != last) {
+            ListNode *node = newNode();
             node->m_prev = prev;
+            prev->m_next = node;
+            std::construct_at(&node->value(), *first++);
+            prev = node;
+            // ++first;
+        }
+        prev->m_next = &m_dummy;
+        m_dummy.m_prev = prev;
+    }
+
+    void assign(size_t n, T const &val) {
+        clear();
+        ListNode *prev = &m_dummy;
+        for (size_t i = 0; i < n; ++i) {
+            ListNode *node = newNode();
+            node->m_prev = prev;
+            prev->m_next = node;
+            std::construct_at(&node->value(), val);
             prev = node;
         }
         prev->m_next = &m_dummy;
         m_dummy.m_prev = prev;
     }
 
+    void assign(size_t n) {
+        clear();
+        ListNode *prev = &m_dummy;
+        for (size_t i = 0; i < n; ++i) {
+            ListNode *node = newNode();
+            node->m_prev = prev;
+            prev->m_next = node;
+            std::construct_at(&node->value());
+            prev = node;
+        }
+        prev->m_next = &m_dummy;
+        m_dummy.m_prev = prev;
+    }
+
+    // 拷贝构造函数
+    list(list<T> const &lst) {
+        ListNode *prev = &m_dummy;
+        for (typename list<T>::iterator it = lst.begin(); it != lst.end();
+             ++it) {
+            ListNode *node = newNode();
+            prev->m_next = node;
+            node->m_prev = prev;
+            // node->value() = *it;
+            std::construct_at(&node->value(), *it);
+            prev = node;
+        }
+        prev->m_next = &m_dummy;
+        m_dummy.m_prev = prev;
+    }
+
+    ~list() noexcept {
+        ListNode *curr = m_dummy.m_next;
+        while (curr != &m_dummy) {
+            // 就地析构对象 T 可能被析构两遍
+            std::destroy_at(&curr->value());
+            // curr->value().~T();
+            auto nxt = curr->m_next;
+            deleteNode(curr);
+            curr = nxt;
+        }
+    }
+
+public:
+    void clear() noexcept {
+        ListNode *curr = m_dummy.m_next;
+        while (curr != &m_dummy) {
+            // 就地析构对象 T 可能被析构两遍
+            std::destroy_at(&curr->value());
+            // curr->value().~T();
+            auto nxt = curr->m_next;
+            deleteNode(curr);
+            curr = nxt;
+        }
+        m_dummy.m_next = m_dummy.m_prev = &m_dummy;
+    }
+
 public:
     // O(1)
-    size_t size() const noexcept { return m_size; }
+    // size_t size() const noexcept { return m_size; }
 
     bool empty() const noexcept { return m_dummy.m_prev == m_dummy.m_next; }
 
-    T &front() noexcept { return m_dummy.m_next->m_val; }
+    T &front() noexcept { return m_dummy.m_next->value(); }
 
-    const T &front() const noexcept { return m_dummy.m_next->m_val; }
+    const T &front() const noexcept { return m_dummy.m_next->value(); }
 
-    T &back() noexcept { return m_dummy.m_prev->m_val; }
+    T &back() noexcept { return m_dummy.m_prev->value(); }
 
-    T const &back() const noexcept { return m_dummy.m_prev->m_val; }
+    T const &back() const noexcept { return m_dummy.m_prev->value(); }
     // Visitor => lambda
     // template <std::invocable<T &> Visitor> 也有const 版本template
     // <std::invocable<T const &> Visitor>
     template <class Visitor>
-    void foreach (Visitor visit) {
+    void foreach (Visitor visit) noexcept {
         // if (m_head == &m_dummy) return;
         ListNode *curr = m_dummy.m_next;
-        // std::cout << "in foreach curr->val = " << curr->m_val << std::endl;
-        // visit(curr->m_val);
+        // std::cout << "in foreach curr->val = " << curr->value() << std::endl;
+        // visit(curr->value());
         // curr = curr->m_next;
         while (curr != &m_dummy) {
-            visit(curr->m_val);
-            // std::cout << "in foreach curr->val = " << curr->m_val <<
+            visit(curr->value());
+            // std::cout << "in foreach curr->val = " << curr->value() <<
             // std::endl;
             curr = curr->m_next;
         }
@@ -203,17 +301,17 @@ public:
 
         // explicit const_iterator(PrivateConstruct, ListNode const *curr) :
         // m_curr(curr) {}
-        explicit iterator(ListNode *curr) : m_curr(curr) {}
+        explicit iterator(ListNode *curr) noexcept : m_curr(curr) {}
 
     public:
         iterator() = default;  // 用户直接list<int>::iterator it; 默认初始构造
         // ++it;
-        iterator &operator++() {
+        iterator &operator++() noexcept {
             m_curr = m_curr->m_next;
             return *this;
         }
         // it++ 返回纯右值
-        iterator operator++(int) {
+        iterator operator++(int) noexcept {
             // 基于前置++
             iterator tmp = *this;
             ++*this;
@@ -221,30 +319,31 @@ public:
         }
 
         // --it;
-        iterator &operator--() {
+        iterator &operator--() noexcept {
             m_curr = m_curr->m_prev;
             return *this;
         }
         // it-- 返回纯右值
-        iterator operator--(int) {
+        iterator operator--(int) noexcept {
             // 基于前置--
             iterator tmp = *this;
             --*this;
             return tmp;
         }
 
-        T &operator*() const { return m_curr->m_val; }
+        T &operator*() const noexcept { return m_curr->value(); }
 
-        bool operator!=(iterator const &that) const {
+        bool operator!=(iterator const &that) const noexcept {
             return m_curr != that.m_curr;
         }
 
-        bool operator==(iterator const &that) const {
+        bool operator==(iterator const &that) const noexcept {
             return m_curr == that.m_curr;  // equal to !(*this != that);
         }
     };
 
-    /// @brief 在const_iterator中 表示迭代器里面的m_val为const,迭代器本身并不是const
+    /// @brief 在const_iterator中
+    /// 表示迭代器里面的value()为const,迭代器本身并不是const
     //  const_iterator(ListNode const *curr);
     //  const_iterator(0);
     // 在外部不能构造出一个迭代器
@@ -264,22 +363,22 @@ public:
 
         // explicit const_iterator(PrivateConstruct, ListNode const *curr) :
         // m_curr(curr) {}
-        explicit const_iterator(ListNode const *curr) : m_curr(curr) {}
+        explicit const_iterator(ListNode const *curr) noexcept : m_curr(curr) {}
 
     public:
         const_iterator() = default;
 
         // 从普通迭代器构造常量迭代器
-        const_iterator(iterator const &that) : m_curr(that.m_curr) {}
+        const_iterator(iterator const &that) noexcept : m_curr(that.m_curr) {}
 
-        const_iterator &operator++() {
+        const_iterator &operator++() noexcept {
             // 可以吗? 可以! 这里改的是指针,并没有更改m_curr指向的内容
             m_curr = m_curr->m_next;
             return *this;
         }
 
         // it++ 返回纯右值
-        const_iterator operator++(int) {
+        const_iterator operator++(int) noexcept {
             // 基于前置++
             auto tmp = *this;
             ++*this;
@@ -287,25 +386,25 @@ public:
         }
 
         // --it;
-        const_iterator &operator--() {
+        const_iterator &operator--() noexcept {
             m_curr = m_curr->m_prev;
             return *this;
         }
         // it-- 返回纯右值
-        const_iterator operator--(int) {
+        const_iterator operator--(int) noexcept {
             // 基于前置--
             auto tmp = *this;
             --*this;
             return tmp;
         }
 
-        T const &operator*() const { return m_curr->m_val; }
+        T const &operator*() const noexcept { return m_curr->value(); }
 
-        bool operator!=(const_iterator const &that) const {
+        bool operator!=(const_iterator const &that) const noexcept {
             return m_curr != that.m_curr;
         }
 
-        bool operator==(const_iterator const &that) const {
+        bool operator==(const_iterator const &that) const noexcept {
             return m_curr == that.m_curr;  // equal to !(*this != that);
         }
     };
@@ -317,10 +416,10 @@ public:
     // coroutine<int> begin() {
     //     if (m_head == nullptr) co_return;
     //     ListNode *curr = m_head;
-    //     co_yield curr->m_val;
+    //     co_yield curr->value();
     //     curr = curr->m_next;
     //     while (curr != m_head) {
-    //         co_yield curr->m_val;
+    //         co_yield curr->value();
     //         curr = curr->m_next;
     //     }
     // }
@@ -329,59 +428,119 @@ public:
     // 注意对迭代器的操作只有在类中才可以
     // iterator begin() { return iterator{PrivateConstruct{}, m_dummy.m_next}; }
 
-    iterator begin() { return iterator{m_dummy.m_next}; }
+    iterator begin() noexcept { return iterator{m_dummy.m_next}; }
 
-    iterator end() { return iterator{&m_dummy}; }
+    iterator end() noexcept { return iterator{&m_dummy}; }
 
-    const_iterator cbegin() const { return const_iterator{m_dummy.m_next}; }
+    const_iterator cbegin() const noexcept { return const_iterator{m_dummy.m_next}; }
 
-    const_iterator cend() const { return const_iterator{&m_dummy}; }
+    const_iterator cend() const noexcept { return const_iterator{&m_dummy}; }
 
-    const_iterator begin() const { return cbegin(); }
+    const_iterator begin() const noexcept { return cbegin(); }
 
-    const_iterator end() const { return cend(); }
+    const_iterator end() const noexcept { return cend(); }
 
     // ====================================================
     using reverse_const_iterator = std::reverse_iterator<const_iterator>;
     using reverse_iterator = std::reverse_iterator<iterator>;
     // ====================================================
-    reverse_iterator rbegin() {
+    reverse_iterator rbegin() noexcept {
         return std::make_reverse_iterator(iterator{&m_dummy});
     }
 
-    reverse_iterator rend() {
+    reverse_iterator rend() noexcept {
         return std::make_reverse_iterator(iterator{m_dummy.m_next});
     }
 
-    reverse_const_iterator crbegin() const {
+    reverse_const_iterator crbegin() const noexcept {
         return std::make_reverse_iterator(const_iterator{&m_dummy});
     }
 
-    reverse_const_iterator crend() const {
+    reverse_const_iterator crend() const noexcept {
         return std::make_reverse_iterator(const_iterator{m_dummy.m_next});
     }
 
-    reverse_const_iterator rbegin() const { return crbegin(); }
+    reverse_const_iterator rbegin() const noexcept { return crbegin(); }
 
-    reverse_const_iterator rend() const { return crend(); }
+    reverse_const_iterator rend() const noexcept { return crend(); }
 
 public:
-    ListNode *get_head() const { return m_dummy.m_next; }
+    // 如果push_back不在乎性能,直接可以转发给emplace_back
+    void push_back(T const &val) {
+        //emplace_back(val);
+        ListNode *node = newNode();
+        std::construct_at(&node->value(), std::move(val));
+        ListNode *prev = m_dummy.m_prev;
+        node->m_next = &m_dummy;
+        node->m_prev = prev;
+        prev->m_next = node;
+        m_dummy.m_prev = node;
+    }
 
-    ListNode const *get_dummy() const { return &m_dummy; }
+    void push_back(T &&val) {
+        emplace_back(std::move(val));
+    }
 
-    ListNode *get_dummy() { return &m_dummy; }
+    void push_front(T const &val) {
+        //emplace_front(val);
+        ListNode *node = newNode();
+        std::construct_at(&node->value(), std::forward<Args>(args)...);
+        node->m_next = m_dummy.m_next;
+        node->m_prev = &m_dummy;
+        m_dummy.m_next->m_prev = node;
+        m_dummy->m_next = node;
+    }
+
+    void push_front(T &&val) {
+        emplace_front(std::move(val));
+    }
+
+    template <class ...Args>
+    T &emplace_front(Args &&...args) {
+        ListNode *node = newNode();
+        std::construct_at(&node->value(), std::forward<Args>(args)...);
+        node->m_next = m_dummy.m_next;
+        node->m_prev = &m_dummy;
+        m_dummy.m_next->m_prev = node;
+        m_dummy->m_next = node;
+    }
+
+    // 从任意参数中构造一个node
+    template <class ...Args>
+    T &emplace_back(Args &&...args) {
+        ListNode *node = newNode();
+        // 完美转发一下
+        std::construct_at(&node->value(), std::forward<Args>(args)...);
+        ListNode *prev = m_dummy.m_prev;
+        node->m_next = &m_dummy;
+        node->m_prev = prev;
+        prev->m_next = node;
+        m_dummy.m_prev = node;
+        return node->value();
+    }
+
+
+public:
+    ListNode *get_head() const noexcept { return m_dummy.m_next; }
+
+    ListNode const *get_dummy() const noexcept { return &m_dummy; }
+
+    ListNode *get_dummy() noexcept { return &m_dummy; }
 
 private:
     // 为了结果end()中不能直接return m_head->m_prev, 标准库发力 直接定义
     // m_dummy不存储任何val 实现中不要出现nullptr
     // ListNode *m_head;
     ListNode m_dummy;
-    size_t m_size = 0;
-};
 
-// template <class T>
-// list<T>::ListNode list<T>::m_dummy;
+    static ListNode *newNode() {
+        return AllocNode{}.allocate(sizeof(ListValueNode));
+    }
+
+    static void deleteNode(ListNode *node) noexcept {
+        AllocNode{}.deallocate(static_cast<ListValueNode *>(node), 1);
+    }
+};
 
 }  // namespace qc
 
@@ -407,7 +566,7 @@ void print_(const std::string &name, qc::list<T> const &lst) {
     // 解决方案:添加拷贝构造函数.
     while (head != tail) {
         // while (head->m_next != tail->m_next) {
-        std::cout << head->m_val << " ";
+        std::cout << head->value() << " ";
         head = head->m_next;
     }
     std::cout << std::endl;
@@ -461,16 +620,28 @@ void test_rtraversal() {
     std::cout << std::endl;
 }
 
+void test_detach_pointer_val() {
+    qc::list<int> lst({1, 2, 3, 4});
+    print<int>("test_detach_pointer_val lst ", lst);
+    std::cout << "after insert val sizeof(ListNode) = "
+              << sizeof(*lst.get_dummy()) << std::endl;
+}
+
 int main() {
-    // test_construct_iterator();
+    std::cout << "sizeof(qc::list<int>) : " << sizeof(qc::list<int>)
+              << std::endl;
 
-    // test_initializer_list();
+    test_construct_iterator();
 
-    // test_foreach();
+    test_initializer_list();
 
-    // test_rtraversal();
+    test_foreach();
+
+    test_rtraversal();
 
     test_print();
+
+    test_detach_pointer_val();
 
     return 0;
 }
