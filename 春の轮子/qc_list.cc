@@ -2,7 +2,7 @@
  * @file qc_list.cc
  * @author qc
  * @brief list仿STL实现
- * @version 0.1
+ * @version 1.0
  * @date 2024-07-08
  *
  * @copyright Copyright (c) 2024
@@ -20,10 +20,18 @@
 #include <iterator>
 #include <list>
 #include <memory>
+#include <numeric>
 #include <stdexcept>
 #include <type_traits>
 
 namespace qc {
+// NOT DEBUG
+#ifdef NDEBUG
+#define DEBUG_INIT_DEADBEAF(T)
+#else
+#define DEBUG_INIT_DEADBEAF(T) \
+    { (T *)0xdeadbead }
+#endif
 
 // list的allocator中的元素类型应该为ListNode而非T,所以要rebind
 template <class T, class Alloc = std::allocator<T>>
@@ -32,8 +40,14 @@ public:
     // 下面是优化(将val和其他属性分隔开) 将list大小从8 + 8 + sizeof(T) -> 8 + 8
     struct ListValueNode;
     struct ListNode {
-        ListNode *m_prev;
-        ListNode *m_next;
+        // ListNode *m_prev;
+        // ListNode *m_next;
+        // 大师是下面这么来调试的
+        // 如果gdb调试的时候出现下面的值说明没有初始化
+        // ListNode *m_prev{(ListNode *)0xdeadbeaf};
+        // ListNode *m_next{(ListNode *)0xdeadbeaf};
+        ListNode *m_next DEBUG_INIT_DEADBEAF(ListNode);
+        ListNode *m_prev DEBUG_INIT_DEADBEAF(ListNode);
         inline T &value() { return static_cast<ListValueNode &>(*this).m_val; }
         inline T const &value() const {
             return static_cast<ListValueNode const &>(*this).m_val;
@@ -41,7 +55,10 @@ public:
     };
 
     struct ListValueNode : public ListNode {
-        T m_val;
+        // 这里要改成union这样它就不会自动初始化了
+        union {
+            T m_val;
+        };
     };
 
 public:
@@ -83,9 +100,14 @@ public:
     // };
 
 public:
-    list() noexcept {}
+    list(Alloc const &alloc = Alloc()) noexcept {
+        m_dummy.m_next = &m_dummy;
+        m_dummy.m_prev = &m_dummy;
+        m_alloc = alloc;
+        m_size = 0;
+    }
 
-    explicit list(size_t n) {
+    explicit list(size_t n, Alloc const &alloc = Alloc()) : m_alloc(alloc) {
         // if (0 == n) {
         //     m_head = &m_dummy;
         //     return;
@@ -114,7 +136,8 @@ public:
         m_dummy.m_prev = prev;
     }
 
-    explicit list(size_t n, T const &val) {
+    explicit list(size_t n, T const &val, Alloc const &alloc = Alloc())
+        : m_alloc(alloc) {
         ListNode *prev = &m_dummy;
         for (size_t i = 0; i < n; ++i) {
             ListNode *node = newNode();
@@ -142,7 +165,7 @@ public:
     // 一般set和mat的iterator类型为bidirectional,如果想要和random_access_iterator效果一样的话需要使用std::advance(it,
     // n)来向前或者向后移动n
     template <std::input_iterator InputIt>
-    list(InputIt first, InputIt last) {
+    explicit list(InputIt first, InputIt last, Alloc const &alloc = Alloc()) {
         // if (first == last) {
         //     m_head = &m_dummy;
         //     return;
@@ -159,58 +182,17 @@ public:
             prev->m_next = node;
             std::construct_at(&node->value(), *first++);
             prev = node;
+            ++m_size;
             // ++first;
         }
         prev->m_next = &m_dummy;
         m_dummy.m_prev = prev;
     }
+
     // 初始化列表中的iterator类型为random_access_iterator,其是input_iterator的超集,所以直接转发没有任何问题
-    list(std::initializer_list<T> ilist) : list(ilist.begin(), ilist.end()) {}
-
-    template <std::input_iterator InputIt>
-    void assign(InputIt first, InputIt last) {
-        clear();
-        ListNode *prev = &m_dummy;
-        // m_head = prev = curr;
-        // std::cout << "m_head->val = " << m_head->m_val << std::endl;
-        while (first != last) {
-            ListNode *node = newNode();
-            node->m_prev = prev;
-            prev->m_next = node;
-            std::construct_at(&node->value(), *first++);
-            prev = node;
-            // ++first;
-        }
-        prev->m_next = &m_dummy;
-        m_dummy.m_prev = prev;
-    }
-
-    void assign(size_t n, T const &val) {
-        clear();
-        ListNode *prev = &m_dummy;
-        for (size_t i = 0; i < n; ++i) {
-            ListNode *node = newNode();
-            node->m_prev = prev;
-            prev->m_next = node;
-            std::construct_at(&node->value(), val);
-            prev = node;
-        }
-        prev->m_next = &m_dummy;
-        m_dummy.m_prev = prev;
-    }
-
-    void assign(size_t n) {
-        clear();
-        ListNode *prev = &m_dummy;
-        for (size_t i = 0; i < n; ++i) {
-            ListNode *node = newNode();
-            node->m_prev = prev;
-            prev->m_next = node;
-            std::construct_at(&node->value());
-            prev = node;
-        }
-        prev->m_next = &m_dummy;
-        m_dummy.m_prev = prev;
+    list(std::initializer_list<T> ilist, Alloc const &alloc = Alloc())
+        : m_alloc(alloc) {
+        _uninit_assign(ilist.begin(), ilist.end());
     }
 
     // 拷贝构造函数
@@ -227,6 +209,135 @@ public:
         }
         prev->m_next = &m_dummy;
         m_dummy.m_prev = prev;
+        m_size = lst.m_size;
+    }
+
+    // 拷贝构造函数
+    list(list<T> const &lst, Alloc const &alloc) : m_alloc(alloc) {
+        ListNode *prev = &m_dummy;
+        for (typename list<T>::iterator it = lst.begin(); it != lst.end();
+             ++it) {
+            ListNode *node = newNode();
+            prev->m_next = node;
+            node->m_prev = prev;
+            // node->value() = *it;
+            std::construct_at(&node->value(), *it);
+            prev = node;
+        }
+        prev->m_next = &m_dummy;
+        m_dummy.m_prev = prev;
+        m_size = lst.m_size;
+    }
+
+    list(list &&that) : m_alloc(std::move(that.m_alloc)) {
+        m_dummy = that.m_dummy;
+        m_dummy.m_next->m_prev = &m_dummy;
+        m_dummy.m_prev->m_next = &m_dummy;
+        m_size = that.m_size;
+        that.m_dummy.m_next = that.m_dummy.m_prev = &that.m_dummy;
+        that.m_size = 0;
+    }
+
+    list(list &&that, Alloc const &alloc) : m_alloc(alloc) {
+        m_dummy = that.m_dummy;
+        m_dummy.m_next->m_prev = &m_dummy;
+        m_dummy.m_prev->m_next = &m_dummy;
+        m_size = that.m_size;
+        that.m_dummy.m_next = that.m_dummy.m_prev = &that.m_dummy;
+        that.m_size = 0;
+    }
+
+    list &operator=(list &&that) {
+        m_alloc = std::move(that.m_alloc);
+        clear();
+        m_dummy = that.m_dummy;
+        m_dummy.m_next->m_prev = &m_dummy;
+        m_dummy.m_prev->m_next = &m_dummy;
+        m_size = that.m_size;
+        that.m_dummy.m_next = that.m_dummy.m_prev = &that.m_dummy;
+        that.m_size = 0;
+    }
+
+    list &operator=(std::initializer_list<T> ilist) { assign(ilist); }
+
+private:
+    template <std::input_iterator InputIt>
+    void _uninit_assign(InputIt first, InputIt last) {
+        ListNode *prev = &m_dummy;
+        // m_head = prev = curr;
+        // std::cout << "m_head->val = " << m_head->m_val << std::endl;
+        while (first != last) {
+            ListNode *node = newNode();
+            node->m_prev = prev;
+            prev->m_next = node;
+            std::construct_at(&node->value(), *first++);
+            prev = node;
+            ++m_size;
+            // ++first;
+        }
+        prev->m_next = &m_dummy;
+        m_dummy.m_prev = prev;
+    }
+
+    void _uninit_assign(size_t n, T const &val) {
+        ListNode *prev = &m_dummy;
+        for (size_t i = 0; i < n; ++i) {
+            ListNode *node = newNode();
+            node->m_prev = prev;
+            prev->m_next = node;
+            std::construct_at(&node->value(), val);
+            prev = node;
+        }
+        prev->m_next = &m_dummy;
+        m_dummy.m_prev = prev;
+        m_size = n;
+    }
+
+    void _uninit_assign(size_t n) {
+        ListNode *prev = &m_dummy;
+        for (size_t i = 0; i < n; ++i) {
+            ListNode *node = newNode();
+            node->m_prev = prev;
+            prev->m_next = node;
+            std::construct_at(&node->value());
+            prev = node;
+        }
+        prev->m_next = &m_dummy;
+        m_dummy.m_prev = prev;
+        m_size = n;
+    }
+
+public:
+    template <std::input_iterator InputIt>
+    void assign(InputIt first, InputIt last) {
+        clear();
+        ListNode *prev = &m_dummy;
+        while (first != last) {
+            ListNode *node = newNode();
+            node->m_prev = prev;
+            prev->m_next = node;
+            std::construct_at(&node->value(), *first++);
+            prev = node;
+            ++m_size;
+            // ++first;
+        }
+        prev->m_next = &m_dummy;
+        m_dummy.m_prev = prev;
+    }
+
+    void assign(std::initializer_list<T> ilist) {
+        clear();
+        _uninit_assign(ilist.begin(), ilist.end());
+    }
+
+    void assign(size_t n, T const &val) {
+        clear();
+        _uninit_assign(n, val);
+    }
+
+    void assign(size_t n) {
+        clear();
+        _uninit_assign(n);
     }
 
     ~list() noexcept {
@@ -239,6 +350,7 @@ public:
             deleteNode(curr);
             curr = nxt;
         }
+        m_size = 0;
     }
 
 public:
@@ -253,6 +365,7 @@ public:
             curr = nxt;
         }
         m_dummy.m_next = m_dummy.m_prev = &m_dummy;
+        m_size = 0;
     }
 
 public:
@@ -365,6 +478,10 @@ public:
         // m_curr(curr) {}
         explicit const_iterator(ListNode const *curr) noexcept : m_curr(curr) {}
 
+        explicit operator iterator() noexcept {
+            return iterator{const_cast<ListNode *>(m_curr)};
+        }
+
     public:
         const_iterator() = default;
 
@@ -432,7 +549,9 @@ public:
 
     iterator end() noexcept { return iterator{&m_dummy}; }
 
-    const_iterator cbegin() const noexcept { return const_iterator{m_dummy.m_next}; }
+    const_iterator cbegin() const noexcept {
+        return const_iterator{m_dummy.m_next};
+    }
 
     const_iterator cend() const noexcept { return const_iterator{&m_dummy}; }
 
@@ -467,7 +586,7 @@ public:
 public:
     // 如果push_back不在乎性能,直接可以转发给emplace_back
     void push_back(T const &val) {
-        //emplace_back(val);
+        // emplace_back(val);
         ListNode *node = newNode();
         std::construct_at(&node->value(), std::move(val));
         ListNode *prev = m_dummy.m_prev;
@@ -475,38 +594,38 @@ public:
         node->m_prev = prev;
         prev->m_next = node;
         m_dummy.m_prev = node;
+        ++m_size;
     }
 
-    void push_back(T &&val) {
-        emplace_back(std::move(val));
-    }
+    void push_back(T &&val) { emplace_back(std::move(val)); }
 
     void push_front(T const &val) {
-        //emplace_front(val);
+        // emplace_front(val);
         ListNode *node = newNode();
-        std::construct_at(&node->value(), std::forward<Args>(args)...);
+        std::construct_at(&node->value(), val);
         node->m_next = m_dummy.m_next;
         node->m_prev = &m_dummy;
         m_dummy.m_next->m_prev = node;
         m_dummy->m_next = node;
+        ++m_size;
     }
 
-    void push_front(T &&val) {
-        emplace_front(std::move(val));
-    }
+    void push_front(T &&val) { emplace_front(std::move(val)); }
 
-    template <class ...Args>
+    template <class... Args>
     T &emplace_front(Args &&...args) {
         ListNode *node = newNode();
         std::construct_at(&node->value(), std::forward<Args>(args)...);
         node->m_next = m_dummy.m_next;
         node->m_prev = &m_dummy;
         m_dummy.m_next->m_prev = node;
-        m_dummy->m_next = node;
+        m_dummy.m_next = node;
+        ++m_size;
+        return node->value();
     }
 
     // 从任意参数中构造一个node
-    template <class ...Args>
+    template <class... Args>
     T &emplace_back(Args &&...args) {
         ListNode *node = newNode();
         // 完美转发一下
@@ -516,9 +635,151 @@ public:
         node->m_prev = prev;
         prev->m_next = node;
         m_dummy.m_prev = node;
+        ++m_size;
         return node->value();
     }
 
+    iterator erase(const_iterator pos) noexcept {
+        ListNode *node = const_cast<ListNode *>(pos.m_curr);
+        ListNode *next = node->m_next;
+        ListNode *prev = node->m_prev;
+        // 循环链表不用判断next是否为空,为空的时候next为&m_dummy
+        prev->m_next = next;
+        next->m_prev = prev;
+        std::destroy_at(&node->value());
+        deleteNode(node);
+        --m_size;
+        return iterator{next};
+    }
+
+    // 不能一边删除一边便利
+    iterator erase(const_iterator first, const_iterator last) noexcept {
+        // ListNode *lst = const_cast<ListNode *>(last.m_curr);
+        // ListNode *fst = const_cast<ListNode *>(last.m_curr);
+        // while (lst != fst) {
+        //     ListNode *node = const_cast<ListNode *>(first.m_curr);
+        //     ListNode *prev = node->m_prev;
+        //     ListNode *next = node->m_next;
+        //     prev->m_next = next;
+        //     next->m_prev = prev;
+        //     std::destroy_at(&node->value());
+        //     deleteNode(node);
+        //     lst = next;
+        // }
+        // return iterator{lst};
+        while (first != last) {
+            first = erase(first);
+            --m_size;
+        }
+        return iterator(first);
+    }
+    // 条件删除
+    size_t remove(T const &val) noexcept {
+        auto first = begin();
+        auto last = end();
+        size_t count = 0;
+        while (first != last) {
+            if (*first == val)
+                first = erase(first), ++count, --m_size;
+            else
+                ++first;
+        }
+        return count;
+    }
+    // invocable表示可调用
+    template <std::invocable<T &> Pred>
+    size_t remove_if(Pred &&pred) noexcept {
+        auto first = begin();
+        auto last = end();
+        size_t count = 0;
+        while (first != last) {
+            if (pred(*first))
+                first = erase(first), ++count, --m_size;
+            else
+                ++first;
+        }
+        return count;
+    }
+
+    void pop_front() noexcept { erase(begin()); }
+
+    void pop_back() noexcept {
+        erase(std::prev(end()));  // equal to erase(--end());
+    }
+
+    template <class... Args>
+    iterator emplace(const_iterator pos, Args &&...args) {
+        ListNode *node = newNode();
+        ListNode *curr = const_cast<ListNode *>(pos.m_curr);
+        ListNode *prev = curr->m_prev;
+        node->m_next = curr;
+        node->m_prev = prev;
+        prev->m_next = node;
+        curr->m_prev = node;
+        std::construct_at(&node->value(), std::forward<Args>(args)...);
+        ++m_size;
+        return iterator{node};
+    }
+
+    iterator insert(const_iterator pos, const T &val) {
+        return emplace(pos, val);
+    }
+
+    iterator insert(const_iterator pos, T &&val) {
+        return emplace(pos, std::move(val));
+    }
+
+    template <std::input_iterator InputIt>
+    iterator insert(const_iterator pos, InputIt first, InputIt last) {
+        const_iterator orig_first;
+        bool had_orig = false;
+        while (first != last) {
+            pos = emplace(pos, *first);
+            if (!had_orig) {
+                had_orig = true;
+                orig_first = pos;
+            }
+            ++pos;
+            ++first;
+            ++m_size;
+        }
+        return orig_first;
+    }
+
+    iterator insert(const_iterator pos, std::initializer_list<T> ilist) {
+        return insert(pos, ilist.begin(), ilist.end());
+    }
+
+    iterator insert(const_iterator pos, size_t n, T const &val) {
+        const_iterator orig_first;
+        bool had_orig = false;
+        while (n) {
+            pos = emplace(pos, val);
+            if (!had_orig) {
+                had_orig = true;
+                orig_first = pos;
+            }
+            ++pos;
+            --n;
+        }
+        m_size += n;
+        return orig_first;
+    }
+
+    void splice(const_iterator pos, list<T> &&that) {
+        insert(pos, std ::make_move_iterator(that.begin()),
+               std::make_move_iterator(that.end()));
+    }
+
+    size_t size() const noexcept { return m_size; }
+
+    static constexpr size_t max_size() noexcept {
+        return std::numeric_limits<size_t>::max();
+    }
+
+    Alloc get_allocator() const {
+        return m_alloc;
+    }
 
 public:
     ListNode *get_head() const noexcept { return m_dummy.m_next; }
@@ -532,13 +793,15 @@ private:
     // m_dummy不存储任何val 实现中不要出现nullptr
     // ListNode *m_head;
     ListNode m_dummy;
+    size_t m_size = 0;
+    [[no_unique_address]] Alloc m_alloc;
 
-    static ListNode *newNode() {
-        return AllocNode{}.allocate(sizeof(ListValueNode));
+    ListNode *newNode() {
+        return AllocNode{m_alloc}.allocate(sizeof(ListValueNode));
     }
 
-    static void deleteNode(ListNode *node) noexcept {
-        AllocNode{}.deallocate(static_cast<ListValueNode *>(node), 1);
+    void deleteNode(ListNode *node) noexcept {
+        AllocNode{m_alloc}.deallocate(static_cast<ListValueNode *>(node), 1);
     }
 };
 
@@ -627,21 +890,53 @@ void test_detach_pointer_val() {
               << sizeof(*lst.get_dummy()) << std::endl;
 }
 
+void test_emplace() {
+    std::cout << "======= test_emplace_back =======" << std::endl;
+    qc::list<int> lst{1, 2, 3, 4, 5};
+    lst.emplace_back(9);
+    print<int>("after emplace_back 9 ", lst);
+    std::cout << "======= test_emplace_front =======" << std::endl;
+    lst.emplace_front(9);
+    print<int>("after emplace_front 9 ", lst);
+}
+
+void test_erase() {
+    std::cout << "======= test_erase =======" << std::endl;
+    qc::list<int> lst{1, 2, 3, 4, 5};
+    lst.erase(lst.begin());
+    print<int>("after erase begin ", lst);
+    std::cout << "======= test_erase_bt =======" << std::endl;
+    lst.erase(lst.begin(), lst.end());
+    print<int>("after erase begin end ", lst);
+}
+
+void test_size() {
+    std::cout << "======= test_size =======" << std::endl;
+    qc::list<int> lst{1, 2, 3, 4, 5, 6, 7, 8, 9};
+    std::cout << "lst.size() = " << lst.size() << std::endl;
+}
+
 int main() {
     std::cout << "sizeof(qc::list<int>) : " << sizeof(qc::list<int>)
               << std::endl;
 
-    test_construct_iterator();
+    // test_construct_iterator();
 
-    test_initializer_list();
+    // test_initializer_list();
 
-    test_foreach();
+    // test_foreach();
 
-    test_rtraversal();
+    // test_rtraversal();
 
-    test_print();
+    // test_print();
 
-    test_detach_pointer_val();
+    // test_detach_pointer_val();
+
+    // test_emplace();
+
+    // test_erase();
+
+    test_size();
 
     return 0;
 }
