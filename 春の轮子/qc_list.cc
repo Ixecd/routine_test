@@ -8,22 +8,14 @@
  * @copyright Copyright (c) 2024
  *
  */
-#include <alloca.h>
-#include <assert.h>
-
-#include <concepts>
-#include <coroutine>
-#include <cstddef>  // for size_t uint64_t ...
 #include <cstring>
-#include <initializer_list>
 #include <iostream>
-#include <iterator>
 #include <list>
-#include <memory>
-#include <numeric>
-#include <stdexcept>
-#include <type_traits>
-
+#include <cstddef>  // for size_t nullptr_t ptrdiff_t ...
+#include <cstdint>  // for uint64_t int8_t 
+#include <initializer_list>
+#include <iterator>
+#include <numeric> // for max
 namespace qc {
 // NOT DEBUG
 #ifdef NDEBUG
@@ -134,6 +126,7 @@ public:
         }
         prev->m_next = &m_dummy;
         m_dummy.m_prev = prev;
+        m_size = n;
     }
 
     explicit list(size_t n, T const &val, Alloc const &alloc = Alloc())
@@ -148,6 +141,7 @@ public:
         }
         prev->m_next = &m_dummy;
         m_dummy.m_prev = prev;
+        m_size = n;
     }
 
     // template <class InputIt>
@@ -165,7 +159,7 @@ public:
     // 一般set和mat的iterator类型为bidirectional,如果想要和random_access_iterator效果一样的话需要使用std::advance(it,
     // n)来向前或者向后移动n
     template <std::input_iterator InputIt>
-    explicit list(InputIt first, InputIt last, Alloc const &alloc = Alloc()) {
+    explicit list(InputIt first, InputIt last, Alloc const &alloc = Alloc()) : m_alloc(alloc) {
         // if (first == last) {
         //     m_head = &m_dummy;
         //     return;
@@ -196,24 +190,24 @@ public:
     }
 
     // 拷贝构造函数
-    list(list<T> const &lst) {
-        ListNode *prev = &m_dummy;
-        for (typename list<T>::iterator it = lst.begin(); it != lst.end();
-             ++it) {
-            ListNode *node = newNode();
-            prev->m_next = node;
-            node->m_prev = prev;
-            // node->value() = *it;
-            std::construct_at(&node->value(), *it);
-            prev = node;
-        }
-        prev->m_next = &m_dummy;
-        m_dummy.m_prev = prev;
-        m_size = lst.m_size;
-    }
+    // list(list const &lst) {
+    //     ListNode *prev = &m_dummy;
+    //     for (typename list<T>::iterator it = lst.begin(); it != lst.end();
+    //          ++it) {
+    //         ListNode *node = newNode();
+    //         prev->m_next = node;
+    //         node->m_prev = prev;
+    //         // node->value() = *it;
+    //         std::construct_at(&node->value(), *it);
+    //         prev = node;
+    //     }
+    //     prev->m_next = &m_dummy;
+    //     m_dummy.m_prev = prev;
+    //     m_size = lst.m_size;
+    // }
 
     // 拷贝构造函数
-    list(list<T> const &lst, Alloc const &alloc) : m_alloc(alloc) {
+    list(list const &lst, Alloc const &alloc = Alloc()) : m_alloc(alloc) {
         ListNode *prev = &m_dummy;
         for (typename list<T>::iterator it = lst.begin(); it != lst.end();
              ++it) {
@@ -477,7 +471,7 @@ public:
         // explicit const_iterator(PrivateConstruct, ListNode const *curr) :
         // m_curr(curr) {}
         explicit const_iterator(ListNode const *curr) noexcept : m_curr(curr) {}
-
+        // 类型转换符 operator newType() ...
         explicit operator iterator() noexcept {
             return iterator{const_cast<ListNode *>(m_curr)};
         }
