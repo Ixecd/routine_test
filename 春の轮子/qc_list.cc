@@ -8,14 +8,14 @@
  * @copyright Copyright (c) 2024
  *
  */
-#include <cstring>
-#include <iostream>
-#include <list>
 #include <cstddef>  // for size_t nullptr_t ptrdiff_t ...
-#include <cstdint>  // for uint64_t int8_t 
+#include <cstdint>  // for uint64_t int8_t
+#include <cstring>
 #include <initializer_list>
+#include <iostream>
 #include <iterator>
-#include <numeric> // for max
+#include <list>
+#include <numeric>  // for max
 namespace qc {
 // NOT DEBUG
 #ifdef NDEBUG
@@ -159,7 +159,8 @@ public:
     // 一般set和mat的iterator类型为bidirectional,如果想要和random_access_iterator效果一样的话需要使用std::advance(it,
     // n)来向前或者向后移动n
     template <std::input_iterator InputIt>
-    explicit list(InputIt first, InputIt last, Alloc const &alloc = Alloc()) : m_alloc(alloc) {
+    explicit list(InputIt first, InputIt last, Alloc const &alloc = Alloc())
+        : m_alloc(alloc) {
         // if (first == last) {
         //     m_head = &m_dummy;
         //     return;
@@ -481,6 +482,11 @@ public:
 
         // 从普通迭代器构造常量迭代器
         const_iterator(iterator const &that) noexcept : m_curr(that.m_curr) {}
+        // 如果没有这个就会自动调用上面这个
+        const_iterator &operator=(iterator const &that) noexcept {
+            m_curr = that.m_curr;
+            return *this;
+        }
 
         const_iterator &operator++() noexcept {
             // 可以吗? 可以! 这里改的是指针,并没有更改m_curr指向的内容
@@ -662,7 +668,7 @@ public:
         // }
         // return iterator{lst};
         while (first != last) {
-            first = erase(first);
+            first = erase(first); // 这里返回的时iterator,再调用构造函数
             --m_size;
         }
         return iterator(first);
@@ -771,9 +777,7 @@ public:
         return std::numeric_limits<size_t>::max();
     }
 
-    Alloc get_allocator() const {
-        return m_alloc;
-    }
+    Alloc get_allocator() const { return m_alloc; }
 
 public:
     ListNode *get_head() const noexcept { return m_dummy.m_next; }
@@ -914,21 +918,21 @@ int main() {
     std::cout << "sizeof(qc::list<int>) : " << sizeof(qc::list<int>)
               << std::endl;
 
-    // test_construct_iterator();
+    test_construct_iterator();
 
-    // test_initializer_list();
+    test_initializer_list();
 
-    // test_foreach();
+    test_foreach();
 
-    // test_rtraversal();
+    test_rtraversal();
 
-    // test_print();
+    test_print();
 
-    // test_detach_pointer_val();
+    test_detach_pointer_val();
 
-    // test_emplace();
+    test_emplace();
 
-    // test_erase();
+    test_erase();
 
     test_size();
 
