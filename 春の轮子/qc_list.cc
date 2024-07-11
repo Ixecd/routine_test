@@ -30,7 +30,6 @@ template <class T, class Alloc = std::allocator<T>>
 class list {
 public:
     // 下面是优化(将val和其他属性分隔开) 将list大小从8 + 8 + sizeof(T) -> 8 + 8
-    struct ListValueNode;
     struct ListNode {
         // ListNode *m_prev;
         // ListNode *m_next;
