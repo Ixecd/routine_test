@@ -15,7 +15,6 @@ namespace qc {
 template <class T, class Alloc = std::allocator<T>>
 class list {
 public:
-    struct ListValueNode;
     struct ListNode {
         ListNode *m_next DEBUG_INIT_DEADBEAF(ListNode);
         ListNode *m_prev DEBUG_INIT_DEADBEAF(ListNode);
