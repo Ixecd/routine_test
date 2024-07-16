@@ -1,0 +1,3 @@
+/home/qc/routine_test/多线程并发/build/CMakeFiles/threadtest.dir
+/home/qc/routine_test/多线程并发/build/CMakeFiles/edit_cache.dir
+/home/qc/routine_test/多线程并发/build/CMakeFiles/rebuild_cache.dir
