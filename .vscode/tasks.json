@@ -10,7 +10,8 @@
                 "-g",
                 "${fileDirname}/${fileBasenameNoExtension}.cc",
                 "-o",
-                "${fileDirname}/bin/${fileBasenameNoExtension}"
+                "${fileDirname}/bin/${fileBasenameNoExtension}",
+                "-lpthread"
             ],
             "options": {
                 "cwd": "${fileDirname}"
