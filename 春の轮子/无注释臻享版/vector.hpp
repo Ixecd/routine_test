@@ -80,6 +80,8 @@ public:
     }
 
     vector& operator=(vector&& v) noexcept {
+        for (size_t i = 0; i < m_size; ++i) 
+            std::destroy(m_data[i]);
         if (m_capacity) [[likely]]
             m_alloc.deallocate(m_data, m_capacity);
         m_data = v.m_data;

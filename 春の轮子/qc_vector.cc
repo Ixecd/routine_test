@@ -150,6 +150,9 @@ public:
     vector& operator=(vector&& v) noexcept {
         // std::cout << "in operator=(vector&& v) " << std::endl;
         // clear();
+        if (m_size) [[likely]] 
+            for (size_t i = 0; i < m_size; ++i) 
+                std::destroy_at(&m_data[i]);
         if (m_capacity) [[likely]]
             m_alloc.deallocate(m_data, m_capacity);
         // delete[] m_data;
