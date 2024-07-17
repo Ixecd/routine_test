@@ -1,8 +1,15 @@
-import <vector>;
-import <iostream>;
-import <numeric>;
-import <ranges>;
-import <cmath>;
+// import <vector>;
+// import <iostream>;
+// import <numeric>;
+// import <ranges>;
+// import <cmath>;
+
+#include <vector>
+#include <iostream>
+#include <numeric>
+#include <ranges>
+#include <cmath>
+
 
 using namespace std;
 
