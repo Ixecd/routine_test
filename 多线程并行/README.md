@@ -77,3 +77,80 @@
 - TBB支持嵌套的并行,流水线内部也可以调用tbb::parallel_for进一步并行
 
 - 流水线可以流式处理数据,节省内存512GB -> 4GB(内存)
+
+**核心数量越多,硬件线程越多,CPU计算能力越强,瓶颈转向为内存读取**
+**超线程就是为了解决内存卡住的问题产生的**
+**为了高效利用缓存,将数据紧凑起来(内存对齐)**
+- 缓存行为64B
+- 下面这种设计为AOS格式
+`struct MyClass {
+    float x;
+    float y;
+    float z;
+};`
+- 下面这种设计更适合于频繁访问x或y或z的情况(SOA格式)
+`struct MyClass {
+    float x[n];
+    float y[n];
+    float z[n];
+};`
+
+- AOS(Array of Struct) 单个对象的属性紧挨着存储
+- SOA(Struct of Array) 属性分离存储在多个数组
+- AOS 必须对齐到2的幂才高效, SOA不需要
+
+**AOSOA 两者兼得**
+- 下面的1024并非随意选取,而是要让每个属性SOA数组的大小为一页(4KB),才能最高效
+`struct MyClass {
+    float x[1024];
+    float y[1024];
+    float z[1024];
+};`
+`std::vector<MyClass> mc(n / 1024);`
+
+- good design
+`struct PL {
+    std::vector<float> pos;
+    std::vector<float> vel;
+};`
+`struct PL {
+    float pos_x[1024];
+    float pos_y[1024];
+    float pos_z[1024];
+    float vel_x[1024];
+    float vel_y[1024];
+    float vel_z[1024];
+};`
+
+**预取prefetch**
+**预取机制为了保证安全,遇到页边界的时候不再预取**
+**缓存和CPU并行操作,CPU执行运算的时候,缓存和内存交涉,读下一个可能的数据**
+**建议一开始就分配到页对齐的大小__mm_malloc**
+**手动预取_mm_prefetch**
+
+**在只需要写的情况下可以绕开缓存提高性能**
+- 为什么写入1比写入0更慢?
+- 写入0被编译器自动优化为memset,memset内部使用stream指令绕开缓存不需要读取,直接写入
+
+
+**内存管理**
+- 当调用malloc的时候,操作系统并不会实际分配那一块内存,而是将这一段内存标记为"不可用",当用户试图访问(写入)这一片内存时,硬件就会触发所谓的缺页中断(page fault),进入操作系统内核,内核会查找当前进程的malloc历史记录.如果发现为"可用",下次访问就不会产生缺页中断,如果用户写入的地址根部不是它malloc过的,就会抛出段错误.
+- std::vector<int>, new int[n]{} 会初始化数组为0
+- malloc(n * sizeof(int)), new int[n] 不会初始化数组为0
+- 初始化数组的时候,内存被写入,操作系统才会实际分配内存.
+**进一步**
+- 操作系统分配内存时按照页面(4KB)来管理的
+- malloc一大块,之后访问内存,操作系统并不是把整个区间全部分配完毕,而是只把当前写入地址所在的页面(4KB)给分配上.
+- 这就是所谓的操作系统惰性分配特性,也是SPGrid(Sparsely-Paged_Grid)实现的基础.
+
+**标准库中的new和malloc只保证16字节对齐**
+
+**手动池化**
+`float func(int n) {
+    // 一个线程有一个tmp
+    static thread_local std::vector<float> tmp;
+    for (size_t i = 0; i < n; ++i) tmp.push_back(i / 15 * 3);
+    int ret = tmp[12];
+    tmp.clear(); //不会释放内存, 这样下一次再调用这个函数就不需要分配内存
+    return ret;
+}`
