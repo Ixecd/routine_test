@@ -4,8 +4,9 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/**",
-                "${workspaceFolder}/春の轮子/无注释臻享版"
+                "${workspaceFolder}/春の轮子/无注释臻享版",
                 // "/usr/include/mysql"
+                "${workspaceFolder}/marco"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/gcc",

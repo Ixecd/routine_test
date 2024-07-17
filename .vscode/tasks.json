@@ -12,7 +12,8 @@
                 "-o",
                 "${fileDirname}/bin/${fileBasenameNoExtension}",
                 "-lpthread",
-                "-ltbb"
+                "-ltbb",
+                "-I${fileDirname}/../marco"
             ],
             "options": {
                 "cwd": "${fileDirname}"
