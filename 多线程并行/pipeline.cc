@@ -20,7 +20,7 @@ int main() {
     size_t n = 1 << 11;
     std::vector<Data> datas(n);
     auto it = datas.begin();
-    //创建流水线, 最多有8个线程,8个data
+    //创建流水线, 最多有8个线程,8个Data在流水线上跑
     tbb::parallel_pipeline(8, tbb::make_filter<void, Data*>(tbb::filter_mode::serial_in_order, [&] (tbb::flow_control &fc) -> Data* {
         if (it == datas.end()) {
             fc.stop();
