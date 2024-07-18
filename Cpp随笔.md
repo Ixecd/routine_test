@@ -78,3 +78,6 @@
 
 14. 关于git clone
     在git clone 的时候加上参数 --depth=1 会更快一点,表示只clone最近的一次commit,不加的话会把所有commit都clone
+
+15. std::upper_bound 和 std::lower_bound
+    仅支持随机访问迭代器random_access_iterator,因为内部实现是二分.
