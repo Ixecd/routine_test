@@ -37,6 +37,7 @@ public:
     int delAll() {
         cache.clear();
         lruLists.clear();
+        return 0;
     }
 
     int get(int key) {
