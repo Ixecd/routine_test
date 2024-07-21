@@ -8,6 +8,10 @@
             "args": [
                 "-std=c++23",
                 "-g",
+                //"-O1",
+                //"-O2",
+                //"-O3",
+                "-Werror=return-type",
                 "${fileDirname}/${fileBasenameNoExtension}.cc",
                 "-o",
                 "${fileDirname}/bin/${fileBasenameNoExtension}",
