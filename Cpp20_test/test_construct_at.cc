@@ -3,14 +3,36 @@ using namespace std;
 
 struct Foo {
     int val;
-    int* ptr;
+    int* ptr = nullptr;
     Foo() {
         ptr = new int{1};
         cout << "Foo() construct..." << endl;
     }
     ~Foo() {
-        delete ptr;
-        cout << "~Foo() destruct..." << endl;
+        if (ptr != nullptr) {
+            delete ptr;
+            cout << "~Foo() destruct..." << endl;
+        }
+        ptr = nullptr;
+    }
+
+    Foo(Foo&& that) {
+        ptr = that.ptr;
+        val = that.val;
+        that.ptr = nullptr;
+        that.val = 0;
+    }
+
+    Foo(Foo const& that) {}
+
+    Foo& operator=(Foo&& that) {
+        if (this == &that) return *this;
+        if (ptr != nullptr) delete ptr;
+        ptr = that.ptr;
+        val = that.val;
+        that.val = 0;
+        that.ptr = nullptr;
+        return *this;
     }
 };
 
@@ -28,10 +50,11 @@ int main() {
     allocator<Foo> alloc;
     Foo* data = alloc.allocate(1);
     Foo fo;
-    construct_at(data, fo);
+    // construct_at的第二个参数是引用类型,如果直接传进去会发生,拷贝构造,如果以move的形式传进去会发生移动构造
+    construct_at(data, std::move(fo));
 
-    // construct_at 是移动拷贝
-    if (fo.ptr == data->ptr) cout << "move" << endl;
+    // construct_at 是引用
+    // if (fo.ptr == data->ptr) cout << "move" << endl;
 
     cout << "before destroy" << endl;
     destroy_at(data);
@@ -40,3 +63,5 @@ int main() {
     cout << "after deallocate" << endl;
     return 0;
 }
+
+// 总结: 对于一个自定义类,如果里面涉及了内存分配,那么一定要给出 自定义析构函数/拷贝构造函数/移动构造函数/移动赋值函数/拷贝赋值函数

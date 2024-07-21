@@ -29,5 +29,9 @@ int main() {
     std::vector<int> vec{1, 2, 3};
     test_rai(vec.begin(), vec.end());
 
+    print_int(100);
+
+    print_float(3.14f);
+
     return 0;
 }
