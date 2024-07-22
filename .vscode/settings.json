@@ -98,5 +98,6 @@
         "cpp": "c",
         "go": "cpp",
         "jsonc": "cpp"
-    }
+    },
+    "cmake.configureOnOpen": false
 }
