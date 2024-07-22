@@ -18,6 +18,19 @@ constexpr int shift_overflow() {
     return 1 << 32;
 }
 
+//[[gnu::noinline]] 告诉gnu不要内联
+[[gnu::noinline]] constexpr int shift_overflow_int() { return 1 << 32; }
+[[gnu::noinline]] constexpr unsigned int shift_overflow_uint() { return 1 << 32; }
+
+int test_shift_overflow() {
+    // 加constexpr会报错(编译器来判断),不加的话会执行返回0,因为编译器不知道用户是否是故意的,int x = shift_overflow_int(); 用户就要0 所以编译器不会报错,但会警告.
+    constexpr int x = shift_overflow_int();
+    PRINT(x);
+    constexpr int y = shift_overflow_uint();
+    PRINT(y);
+    return 0;
+}
+
 /* 建议:如果要用位运算使用无符号的 */
 /*     如果在数学上用就使用有符号的 */
 int main() {

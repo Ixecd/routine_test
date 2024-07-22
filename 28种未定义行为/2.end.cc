@@ -13,6 +13,10 @@ int main() {
     std::vector<int> arr{1, 2, 3, 4, 5, 6};
     int *end = &*(arr.end());
 
+    //建议如果非要对象指针的话
+    int* begin = arr.data();
+    int* end = arr.data() + arr.size();
+
     func();
 
     return 0;
