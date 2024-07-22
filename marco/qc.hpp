@@ -8,3 +8,12 @@
 
 #define PRINT(x) std::cout << #x " : " << x << std::endl;
 #define PRINT_S(x) std::cout << #x << std::endl;
+
+template <class Continer>
+void PRINT_FOR(Continer const& c) {
+    auto it = c.begin();
+    if (it != c.end()) std::cout << '{' << *it;
+    for (++it; it != c.end(); ++it) 
+        std::cout << ", " << *it;
+    std::cout << '}' << std::endl;
+}
