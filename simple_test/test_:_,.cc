@@ -6,7 +6,7 @@ int main() {
     // 防御性编程->该带的括号就得带上
     op = mask != 0 ? (op + arg1, op + arg2) : (op + arg2, op + arg1);
 
-    cout << op << endl;
+    cout << op << endl;  // 8
 
     return 0;
 }
