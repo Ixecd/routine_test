@@ -3,7 +3,10 @@
 int abs(int x) {
     int mask = x >> 31;  // 如果是负数,符号位会顺下来 1111 1111 -> -1
     printf("mask = %d\n", mask);
-    return (mask + x) ^ mask;
+    return (mask + x) ^ mask; // (-1 + (-128)) ^ (-1)
+    //  1..... 11111111 -> -1
+    //  1..... 10000000 -> -128
+    // +1....1011111111 -> 
 }
 
 int main() {
