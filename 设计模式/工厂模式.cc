@@ -26,15 +26,15 @@ void player(Bullet *bullet) { bullet->explode(); }
 // 工厂模式也可以套工厂给枪不如给造枪场
 
 struct Gun {
-    virtual Bullet *shoot() = 0;
+    virtual unique_ptr<Bullet> shoot() = 0;
 };
 
 struct Ak47Gun : Gun {
-    Bullet *shoot() override { return new Ak47Bullet(); }
+    unique_ptr<Bullet> shoot() override { return make_unique<Ak47Bullet>(); }
 };
 
 struct MagicGun : Gun {
-    Bullet *shoot() override { return new MagicBullet(); }
+    unique_ptr<Bullet> shoot() override { return make_unique<MagicBullet>(); }
 };
 
 // void player(Gun *gun) {
@@ -72,11 +72,12 @@ Gun *getGun(string name) {
 }
 
 //实战 (分离)
+// 将初始化和操作分离
 struct ReducerState {
     virtual void operation(int val) = 0;
     virtual int result() = 0;
 };
-// 是状态的工厂
+// 是状态的工厂,初始化就是初始化一个操作状态
 struct Reducer {
     virtual unique_ptr<ReducerState> init() = 0;
 };
@@ -90,7 +91,7 @@ struct SumReducerState : ReducerState {
         res = res + val;
     }
 
-    int result() override{
+    int result() override {
         return res;
     }
 };
@@ -124,14 +125,20 @@ struct AverageReducer : Reducer {
 
 // 多重策略,再定义一个fetch数据
 struct Inputer {
-    virtual std::optional<int> fetch() = 0;
+    virtual std::optional<int> fetch(int val = -1) = 0;
 };
 
 struct CinInputer : Inputer {
-    std::optional<int> fetch() override {
+    // int threshold;
+
+    // void SetThreshold(int thr) {
+    //     threshold = thr;
+    // }
+
+    std::optional<int> fetch(int val = -1) override {
         int tmp;
         cin >> tmp;
-        while (tmp == -1) return std::nullopt;
+        while (tmp == val) return std::nullopt;
         return tmp;
     }
 };
@@ -140,7 +147,7 @@ struct VectorInputer : Inputer {
     vector<int> v;
     int pos = 0;
     VectorInputer(vector<int> v) : v(v) {}
-    std::optional<int> fetch() override {
+    std::optional<int> fetch(int val = 0) override {
         if (pos == v.size()) return std::nullopt;
         return v[pos++];
     }
@@ -156,17 +163,22 @@ int reduce(Inputer *inputer, Reducer *reducer) {
 }
 
 int main() {
-    player(new Ak47Bullet());
-    player(new MagicBullet());
+    // player(new Ak47Bullet());
+    // player(new MagicBullet());
 
-    player(new Ak47Gun());
-    player(new MagicGun());
+    // player(new Ak47Gun());
+    // player(new MagicGun());
 
-    player(make_unique<GunWithBullet<Ak47Bullet>>().get());
-    player(make_unique<GunWithBullet<Ak47Bullet>>().get());
+    // player(make_unique<GunWithBullet<Ak47Bullet>>().get());
+    // player(make_unique<GunWithBullet<Ak47Bullet>>().get());
 
-    player(getGun("Ak47"));
-    player(getGun("Magic"));
+    // player(getGun("Ak47"));
+    // player(getGun("Magic"));
+    
+    Inputer *inputer = new CinInputer();
+    Reducer *reducer = new AverageReducer();
+
+    std::cout << reduce(inputer, reducer);
 
     return 0;
 }
