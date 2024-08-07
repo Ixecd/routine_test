@@ -135,8 +135,7 @@ public:
     // 移动构造函数 把v的变成自己的
     // 不需要深拷贝
     // 移动构造一般都用noexcept修饰,不会申请新的内存
-    vector(vector&& v) noexcept {
-        std::swap(m_alloc, v.m_alloc);
+    vector(vector&& v) noexcept : m_alloc(std::move(v.m_alloc)){
         // std::cout << "in vector(vector&& v) " << std::endl;
         m_data = v.m_data;
         m_size = v.m_size;
