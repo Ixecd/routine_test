@@ -71,8 +71,8 @@ Gun *getGun(string name) {
     }
 }
 
-//实战 (分离)
-// 将初始化和操作分离
+// 实战 (分离)
+//  将初始化和操作分离
 struct ReducerState {
     virtual void operation(int val) = 0;
     virtual int result() = 0;
@@ -87,13 +87,9 @@ struct SumReducerState : ReducerState {
 
     SumReducerState() : res(0) {}
 
-    void operation(int val) override {
-        res = res + val;
-    }
+    void operation(int val) override { res = res + val; }
 
-    int result() override {
-        return res;
-    }
+    int result() override { return res; }
 };
 
 struct AverageReducerState : ReducerState {
@@ -106,9 +102,7 @@ struct AverageReducerState : ReducerState {
         count += 1;
     }
 
-    int result() override{
-        return res / count;
-    }
+    int result() override { return res / count; }
 };
 
 struct SumReducer : Reducer {
@@ -156,11 +150,40 @@ struct VectorInputer : Inputer {
 int reduce(Inputer *inputer, Reducer *reducer) {
     unique_ptr<ReducerState> state = reducer->init();
     while (auto val = inputer->fetch()) {
-        if (val.has_value()) 
-            state->operation(val.value());
+        if (val.has_value()) state->operation(val.value());
     }
     return state->result();
 }
+
+// 再来一种更通用的 类似于子弹
+struct ProduceBase {
+    virtual void use() = 0;
+    virtual ~ProduceBase(){}; // 析构函数不能被定义为纯虚函数
+};
+
+struct Produce1 : ProduceBase {
+    void use() { std::cout << "Produce1 used" << std::endl; }
+    ~Produce1() override { std::cout << "~Pro1" << std::endl; }
+};
+
+struct Produce2 : ProduceBase {
+    void use() { std::cout << "Produce2 used" << std::endl; }
+
+    ~Produce2() override { std::cout << "~Pro2" << std::endl; }
+};
+
+struct Factory {
+    ProduceBase *getOne(int type) {
+        switch (type) {
+            case 1:
+                return new Produce1();
+            case 2:
+                return new Produce2();
+            default:
+                throw out_of_range("No Valid type");
+        }
+    }
+};
 
 int main() {
     // player(new Ak47Bullet());
@@ -174,11 +197,20 @@ int main() {
 
     // player(getGun("Ak47"));
     // player(getGun("Magic"));
-    
-    Inputer *inputer = new CinInputer();
-    Reducer *reducer = new AverageReducer();
 
-    std::cout << reduce(inputer, reducer);
+    // Inputer *inputer = new CinInputer();
+    // Reducer *reducer = new AverageReducer();
+
+    // std::cout << reduce(inputer, reducer);
+
+    Factory factory;
+    ProduceBase *base = factory.getOne(1);
+    base->use();
+    ProduceBase *b = factory.getOne(2);
+    b->use();
+
+    ProduceBase *p = factory.getOne(0);
+    p->use();
 
     return 0;
 }
