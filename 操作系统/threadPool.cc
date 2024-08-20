@@ -166,7 +166,7 @@ void threadMainFun(void* args) {
     // 1. 创建事件循环
     shared_ptr<eventLoop> loop = std::make_shared<eventLoop>();
     assert(loop != nullptr);
-    // 2. 创建消息队列
+    // 2. 绑定消息队列
     threadQueue<taskMsg>* que = (threadQueue<taskMsg>*)args;
     que->setLoop(loop.get());
     que->setCb(bind(deal_task_message, args));
