@@ -169,7 +169,6 @@ void threadMainFun(void* args) {
     // 2. 创建消息队列
     threadQueue<taskMsg>* que = (threadQueue<taskMsg>*)args;
     que->setLoop(loop.get());
-    // auto c = bind(deal_task_message, (threadQueue<taskMsg>*)args);
     que->setCb(bind(deal_task_message, args));
     // 3. 开始事件循环
     cout << "start process" << endl;
