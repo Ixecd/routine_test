@@ -101,16 +101,16 @@ class threadQueue {
 public:
     explicit threadQueue() {
         mEvent = eventfd(0, EFD_NONBLOCK);
-        cout << "mEvent = " << mEvent << endl;
+        cout << "threadEpfd = " << mEvent << endl;
         assert(mEvent != -1);
     }
     ~threadQueue() { close(mEvent); }
-    threadQueue& operator=(threadQueue const&) = delete;
+    threadQueue& operator=(threadQueue &&) = delete;
 
 public:
     int send(T const& task) {
         unsigned long long idle_num = 1;
-        unique_lock<mutex> ulk(mLock);
+        // unique_lock<mutex> ulk(mLock);
         mQue.push(task);
 
         int rt = write(mEvent, &idle_num, sizeof(unsigned long long));
@@ -120,7 +120,7 @@ public:
 
     int recv(queue<T>& newQueue) {
         unsigned long long idle_num = 1;
-        unique_lock<mutex> ulk(mLock);
+        // unique_lock<mutex> ulk(mLock);
         int rt = read(mEvent, &idle_num, sizeof(unsigned long long));
         assert(rt != -1);
         swap(mQue, newQueue);
@@ -135,7 +135,8 @@ public:
     }
 
 private:
-    mutex mLock;
+    // 每个线程都有自己独立的消息队列,不需要锁哦
+    // mutex mLock;
     eventLoop* mLoop;
     int mEvent;
     function<void()> mCb;
@@ -190,7 +191,7 @@ public:
         for (size_t i = 0; i < mSize; ++i) mPool[i].join();
     }
 
-    threadPool& operator=(threadPool const&) = delete;
+    threadPool& operator=(threadPool &&) = delete;
 
 private:
     vector<shared_ptr<threadQueue<taskMsg>>> mQueues;
