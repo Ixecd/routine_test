@@ -50,7 +50,6 @@ def dijkstra(s):
             q.put((dist[v], v))
 
 
-# 如果你直接运行这个python代码（不是模块调用什么的）就执行命令
 if __name__ == "__main__":
     # 一行读入多个整数。注意它会把整行都读进来
     n, m, s = map(int, input().split())
