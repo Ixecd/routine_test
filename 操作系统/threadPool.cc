@@ -32,6 +32,7 @@ public:
         } else if (event & EPOLLOUT) {
             eb->wtCb = cb;
         }
+        mBase[fd] = eb.get();
         int rt = epoll_ctl(mEpfd, EPOLL_CTL_ADD, fd, &epevent);
         return 1;
     }
@@ -41,8 +42,10 @@ public:
         auto it = mBase.find(fd);
         if (it->second->mask & event == 0) return 0;
         it->second->mask &= ~event;
-        if (it->second->mask == 0)
+        if (it->second->mask == 0) {
             int rt = epoll_ctl(mEpfd, EPOLL_CTL_DEL, fd, nullptr);
+            mBase.erase(fd);
+        }
         return 1;
     }
 
