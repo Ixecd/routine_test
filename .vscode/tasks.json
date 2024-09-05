@@ -7,7 +7,9 @@
             "command": "/usr/bin/g++",
             "args": [
                 "-std=c++23",
-                "-g",
+                // 模块
+                "-fmodules-ts",
+                // "-g",
                 //"-O1",
                 //"-O2",
                 //"-O3",
@@ -17,7 +19,7 @@
                 "${fileDirname}/bin/${fileBasenameNoExtension}",
                 "-lpthread",
                 "-ltbb",
-                "-I${fileDirname}/../marco"
+                "-I${fileDirname}/../marco",
             ],
             "options": {
                 "cwd": "${fileDirname}"
