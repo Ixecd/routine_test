@@ -5,11 +5,10 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "${workspaceFolder}/春の轮子/无注释臻享版",
-                // "/usr/include/mysql"
                 "${workspaceFolder}/marco"
             ],
             "defines": [],
-            "compilerPath": "/usr/bin/gcc",
+            "compilerPath": "/usr/bin/g++",
             "cStandard": "c23",
             "cppStandard": "gnu++23",
             "intelliSenseMode": "linux-gcc-x64",
